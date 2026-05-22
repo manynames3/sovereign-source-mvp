@@ -1,0 +1,360 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OrganizationType {
+  BUYER
+  SUPPLIER
+  PLATFORM
+}
+
+enum UserRole {
+  BUYER_ADMIN
+  BUYER_PROCUREMENT
+  SUPPLIER_ADMIN
+  SUPPLIER_ESTIMATOR
+  COMPLIANCE_REVIEWER
+  PLATFORM_ADMIN
+}
+
+enum LifecycleStage {
+  DEVELOPMENTAL
+  SCALING
+  MASS_PRODUCTION
+}
+
+enum ProcessType {
+  CNC_3_AXIS
+  CNC_5_AXIS
+  EDM
+  GRINDING
+  TURNING
+  SHEET_METAL
+  ADDITIVE
+  INJECTION_MOLDING
+  NDT
+  HEAT_TREAT
+  COATING
+  OTHER
+}
+
+enum EvidenceType {
+  SAM_ACTIVE
+  SAM_EXCLUSION_CLEAR
+  ITAR_REGISTRATION_EVIDENCE
+  JCP_DD2345
+  CMMC_LEVEL_2
+  NIST_800_171_SCORE
+  ISO_9001
+  AS9100
+  NADCAP
+  NAVSEA_SUBSAFE
+  CUSTOMER_APPROVED
+  OTHER
+}
+
+enum EvidenceStatus {
+  PENDING_REVIEW
+  VALID
+  EXPIRES_SOON
+  EXPIRED
+  REJECTED
+  MANUAL_REQUIRED
+}
+
+enum EvidenceSource {
+  REGISTRY
+  SUPPLIER_UPLOAD
+  BUYER_APPROVED
+  MANUAL_REVIEW
+}
+
+enum DataClassification {
+  PUBLIC
+  FCI
+  CUI
+  ITAR_TECHNICAL_DATA
+  EAR_CONTROLLED
+  JCP_REQUIRED
+  UNKNOWN
+}
+
+enum WorkPackageStatus {
+  DRAFT
+  CLASSIFICATION_REVIEW
+  READY_TO_MATCH
+  RFQ_SENT
+  CLOSED
+}
+
+enum MatchStatus {
+  ELIGIBLE
+  INELIGIBLE
+  MANUAL_REVIEW
+}
+
+enum AccessStatus {
+  NOT_RELEASED
+  RELEASED
+  REVOKED
+  EXPIRED
+}
+
+enum ResponseStatus {
+  PENDING
+  QUOTED
+  DECLINED
+  NO_BID
+}
+
+enum RFQStatus {
+  DRAFT
+  SENT
+  CLOSED
+}
+
+enum CapacitySignalType {
+  DECLARED_AVAILABILITY
+  RFQ_RESPONSE_TIME
+  NO_BID_REASON
+  QUOTED_LEAD_TIME
+  DELIVERY_HISTORY
+}
+
+model Organization {
+  id                 String               @id @default(cuid())
+  name               String
+  type               OrganizationType
+  cageCode           String?
+  uei                String?
+  country            String
+  state              String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  users              User[]
+  facilities         Facility[]           @relation("SupplierFacilities")
+  supplierProfile    SupplierProfile?
+  complianceEvidence ComplianceEvidence[]
+  registryChecks     RegistryCheck[]
+  capacitySignals    CapacitySignal[]
+  workPackages       WorkPackage[]        @relation("BuyerWorkPackages")
+  rfqs               RFQ[]
+  supplierMatches    SupplierMatch[]
+  rfqInvites         RFQInvite[]
+  auditLogs          AuditLog[]
+}
+
+model User {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  email          String       @unique
+  role           UserRole
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model Facility {
+  id                 String               @id @default(cuid())
+  supplierOrgId      String
+  name               String
+  address            String
+  country            String
+  state              String?
+  cageCode           String?
+  isActive           Boolean              @default(true)
+  supplierOrg        Organization         @relation("SupplierFacilities", fields: [supplierOrgId], references: [id], onDelete: Cascade)
+  capabilities       Capability[]
+  machines           Machine[]
+  complianceEvidence ComplianceEvidence[]
+  capacitySignals    CapacitySignal[]
+  supplierMatches    SupplierMatch[]
+  rfqInvites         RFQInvite[]
+}
+
+model SupplierProfile {
+  id             String         @id @default(cuid())
+  supplierOrgId  String         @unique
+  lifecycleStage LifecycleStage
+  summary        String
+  website        String?
+  primaryContact String
+  status         String
+  supplierOrg    Organization   @relation(fields: [supplierOrgId], references: [id], onDelete: Cascade)
+}
+
+model Capability {
+  id                     String      @id @default(cuid())
+  facilityId             String
+  processType            ProcessType
+  materials              String[]
+  toleranceMinInches     Decimal
+  maxPartSize            String
+  quantityMin            Int
+  quantityMax            Int
+  inspectionCapabilities String[]
+  notes                  String?
+  facility               Facility    @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+}
+
+model Machine {
+  id         String   @id @default(cuid())
+  facilityId String
+  name       String
+  type       String
+  axisCount  Int?
+  envelope   String
+  notes      String?
+  facility   Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+}
+
+model ComplianceEvidence {
+  id                String         @id @default(cuid())
+  supplierOrgId     String
+  facilityId        String?
+  type              EvidenceType
+  status            EvidenceStatus
+  source            EvidenceSource
+  scopeText         String
+  certificateNumber String?
+  issuingBody       String?
+  issueDate         DateTime?
+  expirationDate    DateTime?
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  notes             String?
+  fileUrl           String?
+  supplierOrg       Organization   @relation(fields: [supplierOrgId], references: [id], onDelete: Cascade)
+  facility          Facility?      @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@index([supplierOrgId, type, status])
+}
+
+model RegistryCheck {
+  id            String       @id @default(cuid())
+  supplierOrgId String
+  type          String
+  status        String
+  rawResultJson Json
+  checkedAt     DateTime
+  supplierOrg   Organization @relation(fields: [supplierOrgId], references: [id], onDelete: Cascade)
+}
+
+model CapacitySignal {
+  id            String             @id @default(cuid())
+  supplierOrgId String
+  facilityId    String?
+  signalType    CapacitySignalType
+  valueJson     Json
+  observedAt    DateTime
+  supplierOrg   Organization       @relation(fields: [supplierOrgId], references: [id], onDelete: Cascade)
+  facility      Facility?          @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+}
+
+model WorkPackage {
+  id                       String             @id @default(cuid())
+  buyerOrgId               String
+  title                    String
+  description              String
+  dataClassification       DataClassification
+  classificationApprovedBy String?
+  classificationApprovedAt DateTime?
+  requiredCompliance       EvidenceType[]
+  requiredProcesses        ProcessType[]
+  requiredMaterials        String[]
+  requiredInspection       String[]
+  toleranceRequiredInches  Decimal?
+  quantity                 Int
+  dueDate                  DateTime
+  lifecycleStageTarget     LifecycleStage
+  status                   WorkPackageStatus
+  buyerOrg                 Organization       @relation("BuyerWorkPackages", fields: [buyerOrgId], references: [id], onDelete: Cascade)
+  documents                Document[]
+  supplierMatches          SupplierMatch[]
+  rfqs                     RFQ[]
+}
+
+model Document {
+  id             String             @id @default(cuid())
+  workPackageId  String
+  filename       String
+  storageKey     String
+  contentType    String
+  sizeBytes      Int
+  checksum       String
+  classification DataClassification
+  uploadedBy     String
+  createdAt      DateTime           @default(now())
+  workPackage    WorkPackage        @relation(fields: [workPackageId], references: [id], onDelete: Cascade)
+}
+
+model SupplierMatch {
+  id                String       @id @default(cuid())
+  workPackageId     String
+  supplierOrgId     String
+  facilityId        String
+  eligibilityStatus MatchStatus
+  score             Int
+  reasonsJson       Json
+  blockersJson      Json
+  capacityJson      Json
+  createdAt         DateTime     @default(now())
+  workPackage       WorkPackage  @relation(fields: [workPackageId], references: [id], onDelete: Cascade)
+  supplierOrg       Organization @relation(fields: [supplierOrgId], references: [id], onDelete: Cascade)
+  facility          Facility     @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@index([workPackageId, eligibilityStatus])
+}
+
+model RFQ {
+  id            String       @id @default(cuid())
+  workPackageId String
+  buyerOrgId    String
+  status        RFQStatus
+  createdAt     DateTime     @default(now())
+  sentAt        DateTime?
+  workPackage   WorkPackage  @relation(fields: [workPackageId], references: [id], onDelete: Cascade)
+  buyerOrg      Organization @relation(fields: [buyerOrgId], references: [id], onDelete: Cascade)
+  invites       RFQInvite[]
+}
+
+model RFQInvite {
+  id                 String         @id @default(cuid())
+  rfqId              String
+  workPackageId      String
+  supplierOrgId      String
+  facilityId         String
+  accessStatus       AccessStatus
+  secureTokenHash    String
+  expiresAt          DateTime
+  sentAt             DateTime?
+  viewedAt           DateTime?
+  responseStatus     ResponseStatus
+  noBidReason        String?
+  quotedLeadTimeDays Int?
+  quoteAmount        Decimal?
+  rfq                RFQ            @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  supplierOrg        Organization   @relation(fields: [supplierOrgId], references: [id], onDelete: Cascade)
+  facility           Facility       @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id           String        @id @default(cuid())
+  actorUserId  String?
+  orgId        String?
+  action       String
+  entityType   String
+  entityId     String
+  metadataJson Json
+  ipAddress    String?
+  createdAt    DateTime      @default(now())
+  organization Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+
+  @@index([action, entityType])
+  @@index([orgId, createdAt])
+}
