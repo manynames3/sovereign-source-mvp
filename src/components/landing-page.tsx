@@ -89,6 +89,9 @@ export function LandingPage({ cognitoLogin }: LandingPageProps) {
             <Link className="hidden text-[#c9d2ca] hover:text-white sm:inline" href="/trust">
               Trust
             </Link>
+            <Link className="text-[#c9d2ca] hover:text-white" href="/dashboard?auth=demo">
+              Dashboard
+            </Link>
             <a
               className="inline-flex items-center gap-2 rounded-md border border-[#f2c86b]/70 bg-[#f2c86b] px-3 py-2 font-medium text-[#12110c] hover:bg-[#ffd77a]"
               href={cognitoLogin.href}
