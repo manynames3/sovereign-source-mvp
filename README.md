@@ -53,14 +53,15 @@ pnpm db:seed
 1. Open the logged-in Upload Request workspace.
 2. Upload a drawing/model or load the sample PO/BOM line list.
 3. Review extracted part lines, controlled-data markers, required evidence, and sourcing gates.
-4. Run Find Qualified Vendors to drive deterministic supplier matching.
-5. Start the controlled titanium bracket walkthrough.
-6. Switch roles between Buyer, Compliance Reviewer, and Supplier.
-7. Review evidence notes, expirations, and manual-review states.
-8. Release RFQ invites only to eligible suppliers.
-9. Use the supplier portal data-room modal to view or download fake document records.
-10. Quote, decline, or no-bid from the supplier portal.
-11. Export the audit trail showing who saw what, when, and why.
+4. Review the hybrid sourcing model: software-assisted intake plus curated supplier qualification.
+5. Run Find Qualified Vendors to drive deterministic supplier matching, facility qualification, lead-time signals, and human-review gates.
+6. Start the controlled titanium bracket walkthrough.
+7. Switch roles between Buyer, Compliance Reviewer, and Supplier.
+8. Review evidence notes, expirations, and manual-review states.
+9. Release RFQ invites only to eligible suppliers.
+10. Use the supplier portal data-room modal to view or download fake document records.
+11. Quote, decline, or no-bid from the supplier portal.
+12. Export the audit trail showing who saw what, when, and why.
 
 ## Buyer Artifacts
 

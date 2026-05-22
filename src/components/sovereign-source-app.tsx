@@ -63,7 +63,7 @@ type DemoRole = "BUYER" | "REVIEWER" | "SUPPLIER";
 
 type IntakeMode = "DRAWING" | "PO";
 
-type IntakeStage = "UPLOAD" | "REQUIREMENTS" | "MATCHING" | "RFQ";
+type IntakeStage = "UPLOAD" | "REQUIREMENTS" | "CURATION" | "MATCHING" | "REVIEW" | "RFQ";
 
 type IntakeFile = {
   name: string;
@@ -162,9 +162,19 @@ const intakeStages: Array<{ id: IntakeStage; title: string; detail: string }> = 
     detail: "Part lines, process, material, quantity, inspection, and control markers are normalized.",
   },
   {
+    id: "CURATION",
+    title: "Curate",
+    detail: "Supplier onboarding, facility qualification, audit status, and quality documents are checked.",
+  },
+  {
     id: "MATCHING",
-    title: "Qualify",
-    detail: "Supplier evidence, capability, capacity, and classification gates are checked.",
+    title: "Match",
+    detail: "Capability routing, lead-time signals, and supplier response history shape the shortlist.",
+  },
+  {
+    id: "REVIEW",
+    title: "Review",
+    detail: "Complex jobs and controlled-data exceptions stay with a human reviewer.",
   },
   {
     id: "RFQ",
@@ -182,6 +192,43 @@ const requirementChips = [
   "JCP DD2345",
   "CMMC Level 2",
   "CMM / FAIR",
+];
+
+const softwareLayerItems = [
+  {
+    title: "Instant RFQ intake",
+    detail: "Drawing, PO, and BOM lines become structured sourcing requirements.",
+  },
+  {
+    title: "Capability routing",
+    detail: "Process, material, tolerance, inspection, and quantity drive vendor fit.",
+  },
+  {
+    title: "Lead-time signal",
+    detail: "Capacity and response-history signals guide shortlist priority.",
+  },
+];
+
+const curationLayerItems = [
+  {
+    title: "Curated onboarding",
+    detail: "Suppliers enter the network through buyer-approved evidence and facility review.",
+  },
+  {
+    title: "Facility qualification",
+    detail: "Capability is tied to a specific facility, machine set, and evidence scope.",
+  },
+  {
+    title: "First-order monitoring",
+    detail: "Initial jobs remain monitored for quality documentation and response discipline.",
+  },
+];
+
+const networkControls = [
+  "Factory/supplier audit status",
+  "Quality documentation packet",
+  "Strict compliance gates",
+  "Human support for complex jobs",
 ];
 
 const navItems: Array<{ label: string; href: string; Icon: LucideIcon }> = [
@@ -477,7 +524,7 @@ export function SovereignSourceApp() {
 
   function findQualifiedVendorsFromIntake() {
     setActiveRole("BUYER");
-    setIntakeStage("MATCHING");
+    setIntakeStage("REVIEW");
     setSelectedWorkPackageId("wp-controlled-bracket");
     setMatchFilter("ALL");
     setWorkspace((current) => {
@@ -800,7 +847,7 @@ export function SovereignSourceApp() {
             <div>
               <h1 className="text-xl font-semibold sm:text-2xl">Sovereign Source MVP</h1>
               <p className="text-sm text-[#5e665d]">
-                Logged in as Aegis Advanced Systems · Source controlled work packages.
+                Logged in as Aegis Advanced Systems · Curated network plus sourcing software.
               </p>
             </div>
           </div>
@@ -868,12 +915,12 @@ export function SovereignSourceApp() {
                       <StatusBadge tone="warn" label="manual review required for controlled data" />
                     </div>
                     <h2 className="mt-3 text-2xl font-semibold sm:text-3xl">
-                      Upload a drawing or PO to find qualified vendors
+                      Upload a drawing or PO, then route to curated qualified vendors
                     </h2>
                     <p className="mt-3 max-w-3xl text-sm leading-6 text-[#5e665d]">
-                      Start with a CAD package, PDF drawing, or purchase order line list. The demo normalizes
-                      requirements, applies evidence gates, and shows which suppliers are eligible, need manual
-                      review, or have access suspended.
+                      Start with a CAD package, PDF drawing, or purchase order line list. The workspace combines
+                      instant intake and capability routing with facility-level qualification, quality documentation,
+                      first-order monitoring, and strict evidence gates.
                     </p>
                   </div>
                   <div className="grid gap-2 rounded-lg border border-[#dfe5da] bg-[#fbfcf8] p-3">
@@ -973,6 +1020,11 @@ export function SovereignSourceApp() {
                         ))}
                       </div>
                     </DetailBlock>
+                    <DetailBlock title="Defense Sourcing Model">
+                      <p>Software-assisted intake and matching.</p>
+                      <p>Curated supplier onboarding and facility review.</p>
+                      <p>Human support stays attached to complex controlled jobs.</p>
+                    </DetailBlock>
                   </div>
                 </div>
 
@@ -1007,6 +1059,22 @@ export function SovereignSourceApp() {
                     </tbody>
                   </table>
                 </div>
+
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  {networkControls.map((control) => (
+                    <div key={control} className="rounded-lg border border-[#dfe5da] bg-[#fbfcf8] p-3">
+                      <div className="flex items-start gap-2">
+                        <ShieldCheck className="mt-0.5 text-[#315c4a]" size={16} aria-hidden />
+                        <div>
+                          <p className="font-medium">{control}</p>
+                          <p className="mt-1 text-xs text-[#667064]">
+                            Buyer-defined gate before controlled RFQ routing.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div className="border-t border-[#dfe5da] bg-[#fbfcf8] p-4 xl:border-t-0 xl:border-l">
@@ -1014,7 +1082,7 @@ export function SovereignSourceApp() {
                   <div>
                     <div className="flex items-center gap-2">
                       <Route size={18} aria-hidden />
-                      <h2 className="font-semibold">Qualification Pipeline</h2>
+                      <h2 className="font-semibold">Curated Network Pipeline</h2>
                     </div>
                     <div className="mt-4 grid gap-3">
                       {intakeStages.map((stage, index) => {
@@ -1048,6 +1116,25 @@ export function SovereignSourceApp() {
                     </div>
                   </div>
 
+                  <div className="grid gap-3">
+                    <DetailBlock title="Software Layer">
+                      {softwareLayerItems.map((item) => (
+                        <div key={item.title}>
+                          <p className="font-medium text-[#1f261f]">{item.title}</p>
+                          <p className="text-xs text-[#667064]">{item.detail}</p>
+                        </div>
+                      ))}
+                    </DetailBlock>
+                    <DetailBlock title="Curated Qualification">
+                      {curationLayerItems.map((item) => (
+                        <div key={item.title}>
+                          <p className="font-medium text-[#1f261f]">{item.title}</p>
+                          <p className="text-xs text-[#667064]">{item.detail}</p>
+                        </div>
+                      ))}
+                    </DetailBlock>
+                  </div>
+
                   <DetailBlock title="Vendor Shortlist">
                     {shortlistMatches.map((match) => (
                       <div key={match.id} className="grid gap-1 border-b border-[#e4e9e1] pb-2 last:border-0 last:pb-0">
@@ -1059,7 +1146,17 @@ export function SovereignSourceApp() {
                           />
                         </div>
                         <p className="text-xs text-[#667064]">
-                          {match.score} score · {facilityName(data, match.facilityId)}
+                          {match.score} score · {leadTimeEstimate(match.supplierOrgId)} · {facilityName(data, match.facilityId)}
+                        </p>
+                        <p className="text-xs text-[#667064]">{curationSignal(match)}</p>
+                        <p className="text-xs text-[#667064]">{firstOrderSignal(match)}</p>
+                        <p className="text-xs text-[#667064]">{humanSupportSignal(match)}</p>
+                        <p className="text-xs text-[#667064]">
+                          {match.eligibilityStatus === "ELIGIBLE"
+                            ? "Evidence valid for routing."
+                            : match.eligibilityStatus === "MANUAL_REVIEW"
+                              ? "Manual review required before routing."
+                              : "Access suspended for controlled routing."}
                         </p>
                       </div>
                     ))}
@@ -2021,6 +2118,45 @@ function lineItemTone(status: SourceLineItem["status"]) {
     return "warn";
   }
   return "bad";
+}
+
+function leadTimeEstimate(supplierOrgId: string) {
+  const estimates: Record<string, string> = {
+    "sup-a": "42 day lead-time signal",
+    "sup-e": "52 day lead-time signal",
+    "sup-d": "94 day lead-time signal",
+  };
+  return estimates[supplierOrgId] ?? "lead-time signal pending";
+}
+
+function curationSignal(match: SupplierMatch) {
+  if (match.eligibilityStatus === "ELIGIBLE") {
+    return "Facility-level qualification complete.";
+  }
+  if (match.eligibilityStatus === "MANUAL_REVIEW") {
+    return "Facility evidence queued for reviewer approval.";
+  }
+  return "Curated network gate failed for this package.";
+}
+
+function firstOrderSignal(match: SupplierMatch) {
+  if (match.supplierOrgId === "sup-a") {
+    return "First-order monitoring: quality packet and response cadence tracked.";
+  }
+  if (match.eligibilityStatus === "MANUAL_REVIEW") {
+    return "First-order monitoring starts after evidence review.";
+  }
+  return "First-order monitoring unavailable while access is suspended.";
+}
+
+function humanSupportSignal(match: SupplierMatch) {
+  if (match.eligibilityStatus === "ELIGIBLE") {
+    return "Human support: release review before controlled data-room invite.";
+  }
+  if (match.eligibilityStatus === "MANUAL_REVIEW") {
+    return "Human support: reviewer must clear the exception.";
+  }
+  return "Human support: buyer can request remediation, not automatic release.";
 }
 
 function inferIntakeKind(fileName: string): IntakeMode {
