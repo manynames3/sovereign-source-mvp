@@ -50,14 +50,25 @@ pnpm db:seed
 
 ## Demo Flow
 
-1. Review the dashboard for RFQs, evidence needing review, access suspensions, and audit events.
-2. Open Supplier Directory and compare facility-level capabilities, evidence, machines, and Capacity Confidence.
-3. Review or expire evidence in Evidence Review Queue.
-4. Create a work package, approve classification, then run matching.
-5. Inspect eligible, manual review, and ineligible supplier explanations.
-6. Release RFQ invites only to eligible suppliers.
-7. Use the supplier portal to view the data room, quote, decline, or no-bid.
-8. Confirm audit logs for evidence review, matching, dispatch, document access, response, and revocation.
+1. Start the controlled titanium bracket walkthrough.
+2. Switch roles between Buyer, Compliance Reviewer, and Supplier.
+3. Review the fake-data banner and reset demo data as needed.
+4. Compare facility-level capabilities, evidence, machines, and Capacity Confidence.
+5. Review evidence notes, expirations, and manual-review states.
+6. Approve classification, run matching, and inspect eligible/manual-review/ineligible explanations.
+7. Release RFQ invites only to eligible suppliers.
+8. Use the supplier portal data-room modal to view or download fake document records.
+9. Quote, decline, or no-bid from the supplier portal.
+10. Export the audit trail showing who saw what, when, and why.
+
+## Buyer Artifacts
+
+Static buyer-facing artifacts deploy under `public/artifacts/`:
+
+- `2-minute-demo-script.md`
+- `product-brief.md`
+- `pilot-proposal.md`
+- `sample-roi-claim.md`
 
 ## Architecture
 
@@ -73,7 +84,7 @@ pnpm db:seed
 
 Use: "Evidence valid", "buyer-approved", "manual review required", and "access suspended".
 
-Avoid: "certified by our platform", "fully autonomous compliance verification", "real-time ITAR/SPRS/Nadcap verification", or "air-gapped marketplace".
+Avoid platform-certification language, autonomous-verification claims, undocumented real-time registry claims, or air-gapped-system claims.
 
 ## Limitations
 

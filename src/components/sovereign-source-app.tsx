@@ -5,19 +5,25 @@ import {
   BadgeCheck,
   Check,
   ClipboardList,
+  Download,
+  ExternalLink,
   Eye,
   Factory,
   FileLock2,
+  FileText,
   Filter,
   Flag,
   Gavel,
   History,
   LockKeyhole,
   PackagePlus,
+  PlayCircle,
+  RefreshCcw,
   Search,
   Send,
   ShieldCheck,
   SquarePen,
+  Users,
   UserCheck,
   X,
 } from "lucide-react";
@@ -48,6 +54,8 @@ type WorkspaceState = {
   data: DemoData;
   matches: SupplierMatch[];
 };
+
+type DemoRole = "BUYER" | "REVIEWER" | "SUPPLIER";
 
 type BuilderState = {
   title: string;
@@ -81,6 +89,7 @@ const complianceOptions: EvidenceType[] = [
 
 const navItems: Array<{ label: string; href: string; Icon: LucideIcon }> = [
   { label: "Dashboard", href: "dashboard", Icon: ClipboardList },
+  { label: "Demo Guide", href: "demo-guide", Icon: PlayCircle },
   { label: "Suppliers", href: "suppliers", Icon: Factory },
   { label: "Evidence", href: "evidence", Icon: BadgeCheck },
   { label: "Work Packages", href: "work-packages", Icon: PackagePlus },
@@ -88,6 +97,110 @@ const navItems: Array<{ label: string; href: string; Icon: LucideIcon }> = [
   { label: "Dispatch", href: "dispatch", Icon: Send },
   { label: "Supplier Portal", href: "portal", Icon: UserCheck },
   { label: "Audit", href: "audit", Icon: History },
+  { label: "Artifacts", href: "artifacts", Icon: FileText },
+  { label: "Pilot Scope", href: "pilot-scope", Icon: ShieldCheck },
+];
+
+const demoRoles: Array<{ id: DemoRole; label: string; description: string }> = [
+  {
+    id: "BUYER",
+    label: "Buyer",
+    description: "Create the controlled bracket RFQ, run matching, and release eligible invites.",
+  },
+  {
+    id: "REVIEWER",
+    label: "Compliance Reviewer",
+    description: "Approve classification, review evidence, and suspend access when evidence expires.",
+  },
+  {
+    id: "SUPPLIER",
+    label: "Supplier",
+    description: "Open released RFQs, acknowledge data-room rules, and quote, decline, or no-bid.",
+  },
+];
+
+const walkthroughSteps = [
+  {
+    title: "Open the controlled bracket package",
+    role: "Buyer",
+    target: "work-packages",
+    detail: "The package is ITAR technical data, requires AS9100, ITAR evidence, JCP DD2345, CMMC Level 2, 5-axis titanium capability, and +/-0.0005 in tolerance.",
+  },
+  {
+    title: "Approve the classification gate",
+    role: "Compliance Reviewer",
+    target: "work-packages",
+    detail: "Matching and data release stay blocked unless the buyer-side classification approval is present.",
+  },
+  {
+    title: "Run deterministic matching",
+    role: "Buyer",
+    target: "matching",
+    detail: "Vector is eligible; Keystone needs manual review for CMMC; expired, missing, and capability-mismatch suppliers are blocked with reasons.",
+  },
+  {
+    title: "Release a secure RFQ invite",
+    role: "Buyer",
+    target: "dispatch",
+    detail: "The demo releases data-room access through expiring RFQ invites. Blueprint files are never represented as email attachments.",
+  },
+  {
+    title: "Respond from the supplier portal",
+    role: "Supplier",
+    target: "portal",
+    detail: "The supplier can view the permitted data-room list, then quote, decline, or no-bid with response metadata.",
+  },
+  {
+    title: "Export the audit trail",
+    role: "Buyer",
+    target: "audit",
+    detail: "The audit export answers who saw what, when, and why for evidence review, matching, dispatch, data-room access, response, and revocation.",
+  },
+];
+
+const buyerArtifacts = [
+  {
+    title: "2-minute demo script",
+    href: "/artifacts/2-minute-demo-script.md",
+    detail: "Talk track for the controlled titanium bracket walkthrough.",
+  },
+  {
+    title: "One-page product brief",
+    href: "/artifacts/product-brief.md",
+    detail: "Buyer-facing positioning, target users, and MVP value.",
+  },
+  {
+    title: "Pilot proposal",
+    href: "/artifacts/pilot-proposal.md",
+    detail: "Supplier evidence graph plus controlled RFQ routing pilot scope.",
+  },
+  {
+    title: "Sample ROI claim",
+    href: "/artifacts/sample-roi-claim.md",
+    detail: "Conservative ROI framing around fewer wasted RFQs and lower data-release risk.",
+  },
+];
+
+const sellableArchitecture = [
+  "Real auth and RBAC",
+  "Persistent database with tenant isolation",
+  "Server-side matching and document-access checks",
+  "Object storage with signed URLs",
+  "Server-side audit log",
+  "Evidence files with expiration tracking",
+  "Invite tokens that expire and revoke server-side",
+  "Admin console for demo data, suppliers, reviewers, and buyer orgs",
+];
+
+const firstPilotScope = [
+  "Supplier directory",
+  "Evidence vault",
+  "Work package builder",
+  "Classification approval gate",
+  "Deterministic match results",
+  "Secure RFQ invite and data-room flow",
+  "Supplier response and no-bid flow",
+  "Exportable audit trail",
 ];
 
 function createInitialWorkspace(): WorkspaceState {
@@ -101,6 +214,7 @@ function createInitialWorkspace(): WorkspaceState {
 
 export function SovereignSourceApp() {
   const [workspace, setWorkspace] = useState<WorkspaceState>(createInitialWorkspace);
+  const [activeRole, setActiveRole] = useState<DemoRole>("BUYER");
   const [selectedWorkPackageId, setSelectedWorkPackageId] = useState("wp-controlled-bracket");
   const [activeSupplierId, setActiveSupplierId] = useState("sup-a");
   const [matchFilter, setMatchFilter] = useState<MatchStatus | "ALL">("ALL");
@@ -109,6 +223,7 @@ export function SovereignSourceApp() {
   const [builder, setBuilder] = useState<BuilderState>(defaultBuilder);
   const [selectedInviteSuppliers, setSelectedInviteSuppliers] = useState<string[]>(["sup-a"]);
   const [accessDecision, setAccessDecision] = useState("Released data-room access ready.");
+  const [dataRoomInviteId, setDataRoomInviteId] = useState<string | undefined>();
 
   const data = workspace.data;
   const selectedWorkPackage =
@@ -174,9 +289,55 @@ export function SovereignSourceApp() {
   const portalInvites = data.rfqInvites.filter(
     (invite) => invite.supplierOrgId === supplierPortalUser.organizationId,
   );
+  const dataRoomInvite = data.rfqInvites.find((invite) => invite.id === dataRoomInviteId);
+  const dataRoomDocuments = dataRoomInvite
+    ? data.documents.filter((document) => document.workPackageId === dataRoomInvite.workPackageId)
+    : [];
+  const activeRoleCopy = demoRoles.find((role) => role.id === activeRole)!;
+  const auditExportRows = auditLogs.map((log) => ({
+    when: formatDateTime(log.createdAt),
+    who: userName(data, log.actorUserId) ?? organizationName(data, String(log.orgId ?? "")),
+    what: `${describeAuditAction(log.action)} ${log.entityType} ${log.entityId}`,
+    why: auditWhy(log),
+  }));
+  const auditExportText = [
+    "Who saw what, when, and why",
+    ...auditExportRows.map((row) => `${row.when} | ${row.who} | ${row.what} | ${row.why}`),
+  ].join("\n");
 
   function appendAudit(dataToUpdate: DemoData, log: AuditLog) {
     dataToUpdate.auditLogs = [log, ...dataToUpdate.auditLogs];
+  }
+
+  function resetDemoData() {
+    const initial = createInitialWorkspace();
+    setWorkspace(initial);
+    setActiveRole("BUYER");
+    setSelectedWorkPackageId("wp-controlled-bracket");
+    setActiveSupplierId("sup-a");
+    setMatchFilter("ALL");
+    setSupplierSearch("");
+    setAuditFilter("");
+    setBuilder(defaultBuilder);
+    setSelectedInviteSuppliers(["sup-a"]);
+    setAccessDecision("Released data-room access ready.");
+    setDataRoomInviteId(undefined);
+  }
+
+  function startControlledWalkthrough() {
+    setActiveRole("BUYER");
+    setSelectedWorkPackageId("wp-controlled-bracket");
+    setActiveSupplierId("sup-a");
+    setMatchFilter("ALL");
+    scrollToSection("demo-guide");
+  }
+
+  function jumpToDemoTarget(target: string, roleLabel: string) {
+    const role = demoRoles.find((candidate) => candidate.label === roleLabel);
+    if (role) {
+      setActiveRole(role.id);
+    }
+    scrollToSection(target);
   }
 
   function runMatchForSelected() {
@@ -370,8 +531,15 @@ export function SovereignSourceApp() {
         invite.quoteAmount = 128500;
         invite.quotedLeadTimeDays = 42;
       }
+      if (response === "DECLINED") {
+        invite.noBidReason = undefined;
+        invite.quoteAmount = undefined;
+        invite.quotedLeadTimeDays = undefined;
+      }
       if (response === "NO_BID") {
         invite.noBidReason = "Capacity conflict";
+        invite.quoteAmount = undefined;
+        invite.quotedLeadTimeDays = undefined;
       }
       appendAudit(
         dataCopy,
@@ -387,8 +555,13 @@ export function SovereignSourceApp() {
     });
   }
 
-  function simulateDocumentAccess(invite: RFQInvite) {
-    const document = data.documents.find((candidate) => candidate.workPackageId === invite.workPackageId);
+  function openDataRoom(invite: RFQInvite) {
+    setDataRoomInviteId(invite.id);
+    setAccessDecision("Data-room opened. Select a document to test view/download audit logging.");
+  }
+
+  function simulateDocumentAccess(invite: RFQInvite, documentId: string, action: "DOCUMENT_VIEWED" | "DOCUMENT_DOWNLOADED") {
+    const document = data.documents.find((candidate) => candidate.id === documentId);
     const workPackage = data.workPackages.find((candidate) => candidate.id === invite.workPackageId);
     if (!document || !workPackage) {
       return;
@@ -408,7 +581,7 @@ export function SovereignSourceApp() {
         dataCopy,
         createAuditLog({
           actor: supplierPortalUser,
-          action: decision.allowed ? "DOCUMENT_VIEWED" : "DOCUMENT_ACCESS_DENIED",
+          action: decision.allowed ? action : "DOCUMENT_ACCESS_DENIED",
           entityType: "Document",
           entityId: document.id,
           metadataJson: {
@@ -461,6 +634,17 @@ export function SovereignSourceApp() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
+            <CommandButton label="Start Walkthrough" onClick={startControlledWalkthrough}>
+              <PlayCircle size={16} aria-hidden />
+            </CommandButton>
+            <button
+              className="inline-flex items-center justify-center gap-2 rounded-md border border-[#c8d0c2] bg-white px-3 py-2 text-sm font-medium text-[#334139] hover:bg-[#eef2ea]"
+              onClick={resetDemoData}
+              type="button"
+            >
+              <RefreshCcw size={16} aria-hidden />
+              Reset Demo
+            </button>
             <StatusBadge tone="good" label={`${matchCounts.ELIGIBLE} eligible`} />
             <StatusBadge tone="warn" label={`${matchCounts.MANUAL_REVIEW} manual review`} />
             <StatusBadge tone="bad" label={`${matchCounts.INELIGIBLE} ineligible`} />
@@ -485,6 +669,54 @@ export function SovereignSourceApp() {
         </aside>
 
         <div className="grid gap-5">
+          <section className="rounded-lg border border-[#dfc47a] bg-[#fff9e7] p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="font-semibold text-[#5d4308]">Demo data only</p>
+                <p className="text-sm text-[#74581b]">
+                  This public demo uses simulated suppliers, evidence, RFQs, files, and audit events. Do not upload or enter real controlled technical data.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge tone="warn" label="manual review required when evidence cannot be verified" />
+                <StatusBadge tone="bad" label="access suspended when evidence expires" />
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-[#d9ded4] bg-white p-4">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Users size={18} aria-hidden />
+                  <h2 className="font-semibold">Role Switcher</h2>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  {demoRoles.map((role) => (
+                    <button
+                      key={role.id}
+                      className={`rounded-lg border p-3 text-left ${
+                        activeRole === role.id
+                          ? "border-[#263f38] bg-[#eef7f0]"
+                          : "border-[#dfe5da] bg-[#fbfcf8]"
+                      }`}
+                      onClick={() => setActiveRole(role.id)}
+                      type="button"
+                    >
+                      <p className="font-medium">{role.label}</p>
+                      <p className="mt-1 text-sm text-[#667064]">{role.description}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-lg border border-[#dfe5da] bg-[#fbfcf8] p-3">
+                <p className="text-sm text-[#667064]">Active demo role</p>
+                <p className="mt-1 text-lg font-semibold">{activeRoleCopy.label}</p>
+                <p className="mt-2 text-sm text-[#5d675c]">{activeRoleCopy.description}</p>
+              </div>
+            </div>
+          </section>
+
           <section id="dashboard" className="grid gap-4 lg:grid-cols-4">
             <MetricCard
               icon={<ClipboardList size={20} aria-hidden />}
@@ -510,6 +742,37 @@ export function SovereignSourceApp() {
               value={String(data.auditLogs.length)}
               detail="Sensitive actions logged"
             />
+          </section>
+
+          <section id="demo-guide" className="rounded-lg border border-[#d9ded4] bg-white">
+            <SectionHeader
+              icon={<PlayCircle size={18} aria-hidden />}
+              title="Controlled Titanium Bracket Walkthrough"
+              action={
+                <CommandButton label="Start Walkthrough" onClick={startControlledWalkthrough}>
+                  <PlayCircle size={16} aria-hidden />
+                </CommandButton>
+              }
+            />
+            <div className="grid gap-3 p-4 lg:grid-cols-3">
+              {walkthroughSteps.map((step, index) => (
+                <button
+                  key={step.title}
+                  className="rounded-lg border border-[#dfe5da] bg-[#fbfcf8] p-3 text-left hover:border-[#9aa899]"
+                  onClick={() => jumpToDemoTarget(step.target, step.role)}
+                  type="button"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="grid size-8 place-items-center rounded-md bg-[#263f38] text-sm font-semibold text-white">
+                      {index + 1}
+                    </span>
+                    <StatusBadge tone="neutral" label={step.role.toLowerCase()} />
+                  </div>
+                  <p className="mt-3 font-medium">{step.title}</p>
+                  <p className="mt-2 text-sm text-[#667064]">{step.detail}</p>
+                </button>
+              ))}
+            </div>
           </section>
 
           <section id="suppliers" className="rounded-lg border border-[#d9ded4] bg-white">
@@ -657,6 +920,12 @@ export function SovereignSourceApp() {
                       Source: {evidence.source.replaceAll("_", " ").toLowerCase()} · Expires{" "}
                       {evidence.expirationDate ?? "not specified"}
                     </p>
+                    <div className="mt-2 grid gap-1 text-xs">
+                      <p className={evidence.status === "EXPIRED" ? "text-[#8a2f25]" : "text-[#667064]"}>
+                        {evidenceWarning(evidence)}
+                      </p>
+                      {evidence.notes ? <p className="text-[#667064]">Reviewer note: {evidence.notes}</p> : null}
+                    </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <IconButton label="Approve" onClick={() => reviewEvidence(evidence.id, "VALID")}>
@@ -913,6 +1182,7 @@ export function SovereignSourceApp() {
                     <p className="mt-1 text-sm text-[#667064]">
                       {workPackageName(data, invite.workPackageId)} · expires {formatDate(invite.expiresAt)}
                     </p>
+                    <p className="mt-1 text-xs text-[#667064]">{inviteResponseDetail(invite)}</p>
                   </div>
                   <IconButton label="Revoke invite" onClick={() => revokeInvite(invite.id)}>
                     <LockKeyhole size={16} aria-hidden />
@@ -945,13 +1215,17 @@ export function SovereignSourceApp() {
                     <p className="mt-1 text-sm text-[#667064]">
                       Data-room access expires {formatDate(invite.expiresAt)}. Blueprint files are not emailed.
                     </p>
+                    <p className="mt-1 text-xs text-[#667064]">{inviteResponseDetail(invite)}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <IconButton label="View data room" onClick={() => simulateDocumentAccess(invite)}>
+                    <IconButton label="View data room" onClick={() => openDataRoom(invite)}>
                       <Eye size={16} aria-hidden />
                     </IconButton>
                     <IconButton label="Quote" onClick={() => updateInviteResponse(invite.id, "QUOTED")}>
                       <SquarePen size={16} aria-hidden />
+                    </IconButton>
+                    <IconButton label="Decline" onClick={() => updateInviteResponse(invite.id, "DECLINED")}>
+                      <Flag size={16} aria-hidden />
                     </IconButton>
                     <IconButton label="No-bid" onClick={() => updateInviteResponse(invite.id, "NO_BID")}>
                       <X size={16} aria-hidden />
@@ -978,6 +1252,25 @@ export function SovereignSourceApp() {
                 </label>
               }
             />
+            <div className="grid gap-3 border-b border-[#dfe5da] p-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+              <div>
+                <p className="font-medium">Audit Export</p>
+                <p className="mt-1 text-sm text-[#667064]">
+                  This view is formatted for a buyer review: who saw what, when, and why.
+                </p>
+              </div>
+              <a
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-[#263f38] bg-[#263f38] px-3 py-2 text-sm font-medium text-white hover:bg-[#34584d]"
+                download="sovereign-source-audit-export.txt"
+                href={`data:text/plain;charset=utf-8,${encodeURIComponent(auditExportText)}`}
+              >
+                <Download size={16} aria-hidden />
+                Download Audit Export
+              </a>
+              <pre className="max-h-48 overflow-auto rounded-lg border border-[#dfe5da] bg-[#fbfcf8] p-3 text-xs text-[#38413b] lg:col-span-2">
+                {auditExportText}
+              </pre>
+            </div>
             <div className="overflow-x-auto p-4">
               <table className="min-w-full text-left text-sm">
                 <thead className="text-[#687167]">
@@ -1007,8 +1300,99 @@ export function SovereignSourceApp() {
               </table>
             </div>
           </section>
+
+          <section id="artifacts" className="rounded-lg border border-[#d9ded4] bg-white">
+            <SectionHeader icon={<FileText size={18} aria-hidden />} title="Buyer-Facing Artifacts" />
+            <div className="grid gap-3 p-4 lg:grid-cols-4">
+              {buyerArtifacts.map((artifact) => (
+                <a
+                  key={artifact.href}
+                  className="rounded-lg border border-[#dfe5da] bg-[#fbfcf8] p-3 hover:border-[#9aa899]"
+                  href={artifact.href}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="font-medium">{artifact.title}</p>
+                    <ExternalLink size={16} aria-hidden />
+                  </div>
+                  <p className="mt-2 text-sm text-[#667064]">{artifact.detail}</p>
+                </a>
+              ))}
+            </div>
+          </section>
+
+          <section id="pilot-scope" className="rounded-lg border border-[#d9ded4] bg-white">
+            <SectionHeader icon={<ShieldCheck size={18} aria-hidden />} title="Sellable Pilot Scope" />
+            <div className="grid gap-4 p-4 lg:grid-cols-2">
+              <DetailBlock title="Minimum Sellable Architecture">
+                {sellableArchitecture.map((item) => (
+                  <p key={item}>{item}</p>
+                ))}
+              </DetailBlock>
+              <DetailBlock title="First Paid Pilot Product Scope">
+                {firstPilotScope.map((item) => (
+                  <p key={item}>{item}</p>
+                ))}
+              </DetailBlock>
+            </div>
+          </section>
         </div>
       </main>
+      {dataRoomInvite ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-[#111814]/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-lg border border-[#d9ded4] bg-white shadow-xl">
+            <div className="flex items-start justify-between gap-4 border-b border-[#dfe5da] p-4">
+              <div>
+                <p className="text-sm text-[#667064]">Secure data room</p>
+                <h2 className="text-lg font-semibold">{workPackageName(data, dataRoomInvite.workPackageId)}</h2>
+                <p className="mt-1 text-sm text-[#667064]">
+                  Released to {organizationName(data, dataRoomInvite.supplierOrgId)} until {formatDate(dataRoomInvite.expiresAt)}.
+                </p>
+              </div>
+              <IconButton label="Close data room" onClick={() => setDataRoomInviteId(undefined)}>
+                <X size={16} aria-hidden />
+              </IconButton>
+            </div>
+            <div className="grid gap-3 p-4">
+              <div className="rounded-lg border border-[#dfc47a] bg-[#fff9e7] p-3 text-sm text-[#74581b]">
+                Demo file list only. The sellable pilot must enforce these access checks server-side with object-storage signed URLs.
+              </div>
+              {dataRoomDocuments.map((document) => (
+                <div
+                  key={document.id}
+                  className="grid gap-3 rounded-lg border border-[#dfe5da] bg-[#fbfcf8] p-3 sm:grid-cols-[1fr_auto]"
+                >
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <FileLock2 size={16} aria-hidden />
+                      <p className="font-medium">{document.filename}</p>
+                      <StatusBadge tone="neutral" label={document.classification.replaceAll("_", " ").toLowerCase()} />
+                    </div>
+                    <p className="mt-1 text-xs text-[#667064]">
+                      {formatBytes(document.sizeBytes)} · {document.checksum} · watermark metadata placeholder enabled
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <IconButton
+                      label="View document"
+                      onClick={() => simulateDocumentAccess(dataRoomInvite, document.id, "DOCUMENT_VIEWED")}
+                    >
+                      <Eye size={16} aria-hidden />
+                    </IconButton>
+                    <IconButton
+                      label="Download document"
+                      onClick={() => simulateDocumentAccess(dataRoomInvite, document.id, "DOCUMENT_DOWNLOADED")}
+                    >
+                      <Download size={16} aria-hidden />
+                    </IconButton>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1024,6 +1408,10 @@ function runMatchingForData(data: DemoData, workPackage: WorkPackage) {
     capacitySignals: data.capacitySignals,
     now: demoNow,
   });
+}
+
+function scrollToSection(target: string) {
+  document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function SectionHeader({
@@ -1195,6 +1583,35 @@ function evidenceTone(status: ComplianceEvidence["status"]) {
   return "bad";
 }
 
+function evidenceWarning(evidence: ComplianceEvidence) {
+  if (evidence.status === "VALID") {
+    return "Evidence valid for the listed scope and facility.";
+  }
+  if (evidence.status === "MANUAL_REQUIRED" || evidence.status === "PENDING_REVIEW") {
+    return "Manual review required before this evidence can release controlled data.";
+  }
+  if (evidence.status === "EXPIRED") {
+    return "Access suspended until renewed evidence is reviewed.";
+  }
+  if (evidence.status === "REJECTED") {
+    return "Access suspended because this evidence was rejected.";
+  }
+  return "Evidence expires soon; review before releasing new controlled packages.";
+}
+
+function inviteResponseDetail(invite: RFQInvite) {
+  if (invite.responseStatus === "QUOTED") {
+    return `Quoted ${formatCurrency(invite.quoteAmount)} with ${invite.quotedLeadTimeDays ?? "unknown"} day lead time.`;
+  }
+  if (invite.responseStatus === "DECLINED") {
+    return "Supplier declined this RFQ without receiving file attachments.";
+  }
+  if (invite.responseStatus === "NO_BID") {
+    return `No-bid reason: ${invite.noBidReason ?? "not specified"}.`;
+  }
+  return "Awaiting supplier response.";
+}
+
 function profileTone(status: "ACTIVE" | "NEEDS_REVIEW" | "SUSPENDED") {
   if (status === "ACTIVE") {
     return "good";
@@ -1207,6 +1624,13 @@ function profileTone(status: "ACTIVE" | "NEEDS_REVIEW" | "SUSPENDED") {
 
 function organizationName(data: DemoData, organizationId: string) {
   return data.organizations.find((org) => org.id === organizationId)?.name ?? organizationId;
+}
+
+function userName(data: DemoData, userId?: string) {
+  if (!userId) {
+    return undefined;
+  }
+  return data.users.find((user) => user.id === userId)?.name ?? userId;
 }
 
 function facilityName(data: DemoData, facilityId: string) {
@@ -1230,4 +1654,45 @@ function formatDateTime(value: string) {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatCurrency(value?: number) {
+  if (typeof value !== "number") {
+    return "amount pending";
+  }
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function formatBytes(value: number) {
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)} MB`;
+  }
+  return `${Math.round(value / 1_000)} KB`;
+}
+
+function auditWhy(log: AuditLog) {
+  const metadata = log.metadataJson;
+  if (typeof metadata.reason === "string") {
+    return metadata.reason;
+  }
+  if (typeof metadata.status === "string") {
+    return `Status changed to ${metadata.status}.`;
+  }
+  if (typeof metadata.attachmentPolicy === "string") {
+    return `Attachment policy: ${metadata.attachmentPolicy}.`;
+  }
+  if (typeof metadata.classification === "string") {
+    return `Classification gate: ${metadata.classification}.`;
+  }
+  if (typeof metadata.response === "string") {
+    return `Supplier response: ${metadata.response}.`;
+  }
+  if (typeof metadata.copy === "string") {
+    return metadata.copy;
+  }
+  return "Sensitive workflow event recorded for buyer review.";
 }
