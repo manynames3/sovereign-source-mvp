@@ -50,16 +50,17 @@ pnpm db:seed
 
 ## Demo Flow
 
-1. Start the controlled titanium bracket walkthrough.
-2. Switch roles between Buyer, Compliance Reviewer, and Supplier.
-3. Review the fake-data banner and reset demo data as needed.
-4. Compare facility-level capabilities, evidence, machines, and Capacity Confidence.
-5. Review evidence notes, expirations, and manual-review states.
-6. Approve classification, run matching, and inspect eligible/manual-review/ineligible explanations.
-7. Release RFQ invites only to eligible suppliers.
-8. Use the supplier portal data-room modal to view or download fake document records.
-9. Quote, decline, or no-bid from the supplier portal.
-10. Export the audit trail showing who saw what, when, and why.
+1. Open the logged-in Upload Request workspace.
+2. Upload a drawing/model or load the sample PO/BOM line list.
+3. Review extracted part lines, controlled-data markers, required evidence, and sourcing gates.
+4. Run Find Qualified Vendors to drive deterministic supplier matching.
+5. Start the controlled titanium bracket walkthrough.
+6. Switch roles between Buyer, Compliance Reviewer, and Supplier.
+7. Review evidence notes, expirations, and manual-review states.
+8. Release RFQ invites only to eligible suppliers.
+9. Use the supplier portal data-room modal to view or download fake document records.
+10. Quote, decline, or no-bid from the supplier portal.
+11. Export the audit trail showing who saw what, when, and why.
 
 ## Buyer Artifacts
 

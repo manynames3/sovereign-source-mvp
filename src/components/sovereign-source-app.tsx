@@ -4,11 +4,13 @@ import {
   AlertTriangle,
   BadgeCheck,
   Check,
+  CheckCircle2,
   ClipboardList,
   Download,
   ExternalLink,
   Eye,
   Factory,
+  FileSpreadsheet,
   FileLock2,
   FileText,
   Filter,
@@ -19,10 +21,12 @@ import {
   PackagePlus,
   PlayCircle,
   RefreshCcw,
+  Route,
   Search,
   Send,
   ShieldCheck,
   SquarePen,
+  UploadCloud,
   Users,
   UserCheck,
   X,
@@ -57,6 +61,27 @@ type WorkspaceState = {
 
 type DemoRole = "BUYER" | "REVIEWER" | "SUPPLIER";
 
+type IntakeMode = "DRAWING" | "PO";
+
+type IntakeStage = "UPLOAD" | "REQUIREMENTS" | "MATCHING" | "RFQ";
+
+type IntakeFile = {
+  name: string;
+  kind: IntakeMode;
+  sizeLabel: string;
+};
+
+type SourceLineItem = {
+  partNumber: string;
+  description: string;
+  process: ProcessType;
+  material: string;
+  quantity: number;
+  tolerance: string;
+  classification: DataClassification;
+  status: "ready" | "manual review required" | "access suspended";
+};
+
 type BuilderState = {
   title: string;
   classification: DataClassification;
@@ -87,7 +112,80 @@ const complianceOptions: EvidenceType[] = [
   "CUSTOMER_APPROVED",
 ];
 
+const sampleIntakeFiles: IntakeFile[] = [
+  { name: "controlled_titanium_bracket.step", kind: "DRAWING", sizeLabel: "2.8 MB" },
+  { name: "PO-7421-line-items.xlsx", kind: "PO", sizeLabel: "44 KB" },
+];
+
+const sourceLineItems: SourceLineItem[] = [
+  {
+    partNumber: "AAS-7421-001",
+    description: "Controlled titanium aerospace bracket",
+    process: "CNC_5_AXIS",
+    material: "Titanium",
+    quantity: 25,
+    tolerance: "+/-0.0005 in",
+    classification: "ITAR_TECHNICAL_DATA",
+    status: "ready",
+  },
+  {
+    partNumber: "AAS-7421-002",
+    description: "CMM first article inspection report",
+    process: "OTHER",
+    material: "Documentation",
+    quantity: 1,
+    tolerance: "AS9102 FAIR",
+    classification: "CUI",
+    status: "manual review required",
+  },
+  {
+    partNumber: "AAS-7421-003",
+    description: "Black anodize and passivation requirement",
+    process: "COATING",
+    material: "Titanium",
+    quantity: 25,
+    tolerance: "per drawing note 14",
+    classification: "ITAR_TECHNICAL_DATA",
+    status: "access suspended",
+  },
+];
+
+const intakeStages: Array<{ id: IntakeStage; title: string; detail: string }> = [
+  {
+    id: "UPLOAD",
+    title: "Upload",
+    detail: "Drawing, model, PO, or line-item workbook received.",
+  },
+  {
+    id: "REQUIREMENTS",
+    title: "Extract",
+    detail: "Part lines, process, material, quantity, inspection, and control markers are normalized.",
+  },
+  {
+    id: "MATCHING",
+    title: "Qualify",
+    detail: "Supplier evidence, capability, capacity, and classification gates are checked.",
+  },
+  {
+    id: "RFQ",
+    title: "Route",
+    detail: "Only eligible suppliers receive secure data-room invites.",
+  },
+];
+
+const requirementChips = [
+  "5-axis CNC",
+  "Titanium",
+  "+/-0.0005 in",
+  "AS9100",
+  "ITAR evidence",
+  "JCP DD2345",
+  "CMMC Level 2",
+  "CMM / FAIR",
+];
+
 const navItems: Array<{ label: string; href: string; Icon: LucideIcon }> = [
+  { label: "Upload Request", href: "source-intake", Icon: UploadCloud },
   { label: "Dashboard", href: "dashboard", Icon: ClipboardList },
   { label: "Demo Guide", href: "demo-guide", Icon: PlayCircle },
   { label: "Suppliers", href: "suppliers", Icon: Factory },
@@ -215,6 +313,9 @@ function createInitialWorkspace(): WorkspaceState {
 export function SovereignSourceApp() {
   const [workspace, setWorkspace] = useState<WorkspaceState>(createInitialWorkspace);
   const [activeRole, setActiveRole] = useState<DemoRole>("BUYER");
+  const [intakeMode, setIntakeMode] = useState<IntakeMode>("DRAWING");
+  const [intakeStage, setIntakeStage] = useState<IntakeStage>("UPLOAD");
+  const [intakeFiles, setIntakeFiles] = useState<IntakeFile[]>(sampleIntakeFiles);
   const [selectedWorkPackageId, setSelectedWorkPackageId] = useState("wp-controlled-bracket");
   const [activeSupplierId, setActiveSupplierId] = useState("sup-a");
   const [matchFilter, setMatchFilter] = useState<MatchStatus | "ALL">("ALL");
@@ -266,6 +367,12 @@ export function SovereignSourceApp() {
     }),
     [workspace.matches],
   );
+  const activeStageIndex = intakeStages.findIndex((stage) => stage.id === intakeStage);
+  const shortlistMatches = [...workspace.matches].sort((a, b) => b.score - a.score).slice(0, 3);
+  const intakeFileSummary =
+    intakeFiles.length > 0
+      ? `${intakeFiles.length} file${intakeFiles.length === 1 ? "" : "s"} loaded`
+      : "No files loaded";
 
   const filteredMatches = workspace.matches.filter((match) =>
     matchFilter === "ALL" ? true : match.eligibilityStatus === matchFilter,
@@ -313,6 +420,9 @@ export function SovereignSourceApp() {
     const initial = createInitialWorkspace();
     setWorkspace(initial);
     setActiveRole("BUYER");
+    setIntakeMode("DRAWING");
+    setIntakeStage("UPLOAD");
+    setIntakeFiles(sampleIntakeFiles);
     setSelectedWorkPackageId("wp-controlled-bracket");
     setActiveSupplierId("sup-a");
     setMatchFilter("ALL");
@@ -338,6 +448,66 @@ export function SovereignSourceApp() {
       setActiveRole(role.id);
     }
     scrollToSection(target);
+  }
+
+  function handleIntakeUpload(files: FileList | null) {
+    if (!files || files.length === 0) {
+      return;
+    }
+    const loadedFiles = Array.from(files).map<IntakeFile>((file) => ({
+      name: file.name,
+      kind: inferIntakeKind(file.name),
+      sizeLabel: formatBytes(file.size),
+    }));
+    setIntakeFiles(loadedFiles);
+    setIntakeMode(loadedFiles.some((file) => file.kind === "PO") ? "PO" : "DRAWING");
+    setIntakeStage("REQUIREMENTS");
+    setSelectedWorkPackageId("wp-controlled-bracket");
+    setBuilder(defaultBuilder);
+  }
+
+  function loadSampleIntake() {
+    setIntakeFiles(sampleIntakeFiles);
+    setIntakeMode("PO");
+    setIntakeStage("REQUIREMENTS");
+    setActiveRole("BUYER");
+    setSelectedWorkPackageId("wp-controlled-bracket");
+    setBuilder(defaultBuilder);
+  }
+
+  function findQualifiedVendorsFromIntake() {
+    setActiveRole("BUYER");
+    setIntakeStage("MATCHING");
+    setSelectedWorkPackageId("wp-controlled-bracket");
+    setMatchFilter("ALL");
+    setWorkspace((current) => {
+      const workPackage = current.data.workPackages.find(
+        (candidate) => candidate.id === "wp-controlled-bracket",
+      );
+      if (!workPackage) {
+        return current;
+      }
+      const result = runMatchingForData(current.data, workPackage);
+      const dataCopy = structuredClone(current.data);
+      appendAudit(
+        dataCopy,
+        createAuditLog({
+          actor: buyerUser,
+          action: "MATCHING_RUN",
+          entityType: "WorkPackage",
+          entityId: workPackage.id,
+          metadataJson: {
+            source: "intake_upload",
+            uploadedFiles: intakeFiles.map((file) => file.name),
+            eligible: result.counts.ELIGIBLE,
+            manualReview: result.counts.MANUAL_REVIEW,
+            ineligible: result.counts.INELIGIBLE,
+          },
+        }),
+      );
+      return { data: dataCopy, matches: result.matches };
+    });
+    scrollToSection("matching");
   }
 
   function runMatchForSelected() {
@@ -469,6 +639,7 @@ export function SovereignSourceApp() {
       return;
     }
 
+    setIntakeStage("RFQ");
     setWorkspace((current) => {
       const dataCopy = structuredClone(current.data);
       const rfqId = `rfq-created-${current.data.rfqs.length + 1}`;
@@ -629,11 +800,14 @@ export function SovereignSourceApp() {
             <div>
               <h1 className="text-xl font-semibold sm:text-2xl">Sovereign Source MVP</h1>
               <p className="text-sm text-[#5e665d]">
-                Evidence-backed supplier qualification and secure RFQ routing.
+                Logged in as Aegis Advanced Systems · Source controlled work packages.
               </p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
+            <CommandButton label="New Source Request" onClick={() => scrollToSection("source-intake")}>
+              <UploadCloud size={16} aria-hidden />
+            </CommandButton>
             <CommandButton label="Start Walkthrough" onClick={startControlledWalkthrough}>
               <PlayCircle size={16} aria-hidden />
             </CommandButton>
@@ -680,6 +854,223 @@ export function SovereignSourceApp() {
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge tone="warn" label="manual review required when evidence cannot be verified" />
                 <StatusBadge tone="bad" label="access suspended when evidence expires" />
+              </div>
+            </div>
+          </section>
+
+          <section id="source-intake" className="rounded-lg border border-[#d9ded4] bg-white">
+            <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_420px]">
+              <div className="grid gap-5 p-4 sm:p-5">
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge tone="neutral" label="buyer workspace" />
+                      <StatusBadge tone="warn" label="manual review required for controlled data" />
+                    </div>
+                    <h2 className="mt-3 text-2xl font-semibold sm:text-3xl">
+                      Upload a drawing or PO to find qualified vendors
+                    </h2>
+                    <p className="mt-3 max-w-3xl text-sm leading-6 text-[#5e665d]">
+                      Start with a CAD package, PDF drawing, or purchase order line list. The demo normalizes
+                      requirements, applies evidence gates, and shows which suppliers are eligible, need manual
+                      review, or have access suspended.
+                    </p>
+                  </div>
+                  <div className="grid gap-2 rounded-lg border border-[#dfe5da] bg-[#fbfcf8] p-3">
+                    <p className="text-sm font-medium">Current intake</p>
+                    <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                      <div>
+                        <p className="text-2xl font-semibold">{intakeFiles.length}</p>
+                        <p className="text-xs text-[#667064]">files</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-semibold">{sourceLineItems.length}</p>
+                        <p className="text-xs text-[#667064]">line items</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-semibold">{matchCounts.ELIGIBLE}</p>
+                        <p className="text-xs text-[#667064]">eligible</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-[#667064]">{intakeFileSummary}</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
+                  <div className="rounded-lg border border-[#cbd6ca] bg-[#f8faf5] p-4">
+                    <div className="flex gap-2">
+                      {(["DRAWING", "PO"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium ${
+                            intakeMode === mode
+                              ? "border-[#263f38] bg-[#263f38] text-white"
+                              : "border-[#c8d0c2] bg-white text-[#38413b]"
+                          }`}
+                          onClick={() => setIntakeMode(mode)}
+                          type="button"
+                        >
+                          {mode === "DRAWING" ? "Drawing" : "PO / BOM"}
+                        </button>
+                      ))}
+                    </div>
+                    <label className="mt-4 grid min-h-52 cursor-pointer place-items-center rounded-lg border border-dashed border-[#92a28f] bg-white p-5 text-center hover:bg-[#f1f5ee]">
+                      <input
+                        className="sr-only"
+                        multiple
+                        onChange={(event) => handleIntakeUpload(event.target.files)}
+                        type="file"
+                      />
+                      <span className="grid gap-3">
+                        <span className="mx-auto grid size-12 place-items-center rounded-lg bg-[#263f38] text-white">
+                          <UploadCloud size={24} aria-hidden />
+                        </span>
+                        <span>
+                          <span className="block font-medium">Upload drawing, model, PO, or line list</span>
+                          <span className="mt-1 block text-sm text-[#667064]">
+                            STEP, PDF, XLSX, CSV, and ZIP are represented in this demo.
+                          </span>
+                        </span>
+                      </span>
+                    </label>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        className="inline-flex items-center justify-center gap-2 rounded-md border border-[#c8d0c2] bg-white px-3 py-2 text-sm font-medium text-[#334139] hover:bg-[#eef2ea]"
+                        onClick={loadSampleIntake}
+                        type="button"
+                      >
+                        <FileSpreadsheet size={16} aria-hidden />
+                        Use Sample PO
+                      </button>
+                      <CommandButton label="Find Qualified Vendors" onClick={findQualifiedVendorsFromIntake}>
+                        <Search size={16} aria-hidden />
+                      </CommandButton>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3">
+                    <DetailBlock title="Uploaded Package">
+                      {intakeFiles.map((file) => (
+                        <div key={file.name} className="flex items-center justify-between gap-3">
+                          <span className="flex items-center gap-2">
+                            {file.kind === "DRAWING" ? (
+                              <FileLock2 size={15} aria-hidden />
+                            ) : (
+                              <FileSpreadsheet size={15} aria-hidden />
+                            )}
+                            {file.name}
+                          </span>
+                          <span className="text-xs text-[#667064]">{file.sizeLabel}</span>
+                        </div>
+                      ))}
+                    </DetailBlock>
+                    <DetailBlock title="Detected Requirements">
+                      <div className="flex flex-wrap gap-2">
+                        {requirementChips.map((item) => (
+                          <span key={item} className="rounded-md border border-[#c8d0c2] bg-white px-2 py-1 text-xs">
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                    </DetailBlock>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto rounded-lg border border-[#dfe5da]">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="bg-[#fbfcf8] text-[#687167]">
+                      <tr className="border-b border-[#dfe5da]">
+                        <th className="py-2 pr-4 pl-3 font-medium">Line</th>
+                        <th className="py-2 pr-4 font-medium">Process</th>
+                        <th className="py-2 pr-4 font-medium">Material</th>
+                        <th className="py-2 pr-4 font-medium">Qty</th>
+                        <th className="py-2 pr-4 font-medium">Control</th>
+                        <th className="py-2 pr-3 font-medium">Gate</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sourceLineItems.map((item) => (
+                        <tr key={item.partNumber} className="border-b border-[#edf0ea] last:border-0">
+                          <td className="py-3 pr-4 pl-3">
+                            <p className="font-medium">{item.partNumber}</p>
+                            <p className="text-xs text-[#667064]">{item.description}</p>
+                          </td>
+                          <td className="py-3 pr-4">{processLabels[item.process]}</td>
+                          <td className="py-3 pr-4">{item.material}</td>
+                          <td className="py-3 pr-4">{item.quantity}</td>
+                          <td className="py-3 pr-4">{item.classification.replaceAll("_", " ").toLowerCase()}</td>
+                          <td className="py-3 pr-3">
+                            <StatusBadge tone={lineItemTone(item.status)} label={item.status} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="border-t border-[#dfe5da] bg-[#fbfcf8] p-4 xl:border-t-0 xl:border-l">
+                <div className="grid gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Route size={18} aria-hidden />
+                      <h2 className="font-semibold">Qualification Pipeline</h2>
+                    </div>
+                    <div className="mt-4 grid gap-3">
+                      {intakeStages.map((stage, index) => {
+                        const isActive = index === activeStageIndex;
+                        const isComplete = index < activeStageIndex;
+                        return (
+                          <div
+                            key={stage.id}
+                            className={`rounded-lg border p-3 ${
+                              isActive
+                                ? "border-[#263f38] bg-white"
+                                : isComplete
+                                  ? "border-[#9bc2a6] bg-[#edf7ee]"
+                                  : "border-[#dfe5da] bg-white"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              {isComplete ? (
+                                <CheckCircle2 size={16} className="text-[#245a38]" aria-hidden />
+                              ) : (
+                                <span className="grid size-4 place-items-center rounded-full border border-[#8b9889] text-[10px]">
+                                  {index + 1}
+                                </span>
+                              )}
+                              <p className="font-medium">{stage.title}</p>
+                            </div>
+                            <p className="mt-1 text-sm text-[#667064]">{stage.detail}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <DetailBlock title="Vendor Shortlist">
+                    {shortlistMatches.map((match) => (
+                      <div key={match.id} className="grid gap-1 border-b border-[#e4e9e1] pb-2 last:border-0 last:pb-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-[#1f261f]">{organizationName(data, match.supplierOrgId)}</span>
+                          <StatusBadge
+                            tone={statusTone[match.eligibilityStatus]}
+                            label={match.eligibilityStatus.replaceAll("_", " ").toLowerCase()}
+                          />
+                        </div>
+                        <p className="text-xs text-[#667064]">
+                          {match.score} score · {facilityName(data, match.facilityId)}
+                        </p>
+                      </div>
+                    ))}
+                  </DetailBlock>
+
+                  <DetailBlock title="Next Action">
+                    <p>Evidence valid suppliers can receive a secure RFQ invite.</p>
+                    <p>Manual review required suppliers stay out of automatic routing.</p>
+                    <p>Access suspended suppliers cannot receive controlled files.</p>
+                  </DetailBlock>
+                </div>
               </div>
             </div>
           </section>
@@ -1620,6 +2011,30 @@ function profileTone(status: "ACTIVE" | "NEEDS_REVIEW" | "SUSPENDED") {
     return "warn";
   }
   return "bad";
+}
+
+function lineItemTone(status: SourceLineItem["status"]) {
+  if (status === "ready") {
+    return "good";
+  }
+  if (status === "manual review required") {
+    return "warn";
+  }
+  return "bad";
+}
+
+function inferIntakeKind(fileName: string): IntakeMode {
+  const lowerName = fileName.toLowerCase();
+  if (
+    lowerName.includes("po") ||
+    lowerName.includes("bom") ||
+    lowerName.endsWith(".csv") ||
+    lowerName.endsWith(".xlsx") ||
+    lowerName.endsWith(".xls")
+  ) {
+    return "PO";
+  }
+  return "DRAWING";
 }
 
 function organizationName(data: DemoData, organizationId: string) {
