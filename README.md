@@ -35,6 +35,159 @@ pnpm build
 pnpm prisma:validate
 ```
 
+## Supplier Starter Database Pipeline
+
+This repo also includes `sovereign_starter_db.py`, a Python pipeline that builds a starter supplier database for Sovereign Source from free, legally clean US government open-data sources. It is designed to help identify defense-relevant suppliers by DoD award history and target NAICS codes, then optionally enrich those rows with active SAM.gov FOIA public extract fields.
+
+### Data Sources And Legal Boundary
+
+- USASpending.gov API: open government spending data, no API key required.
+- SAM.gov FOIA public extract: public-domain/CC0 public data downloaded from SAM.gov data services.
+- eAuditNet is not scraped. `nadcap_status` is always the placeholder `VERIFY eAuditNet`.
+- SPRS is not scraped. `cmmc_status` is always the placeholder `VERIFY SPRS`.
+- The output does not confirm NADCAP, CMMC, ITAR, or any other supplier compliance status.
+
+### Install
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+```
+
+### Usage
+
+Run USASpending only:
+
+```bash
+.venv/bin/python sovereign_starter_db.py
+```
+
+Write CSV and SQLite:
+
+```bash
+.venv/bin/python sovereign_starter_db.py --sqlite
+```
+
+Use a SAM.gov FOIA extract:
+
+```bash
+.venv/bin/python sovereign_starter_db.py \
+  --sam-extract data/SAM_PUBLIC_EXTRACT.csv \
+  --sqlite
+```
+
+Filter by NAICS:
+
+```bash
+.venv/bin/python sovereign_starter_db.py --naics 332811,336413,541380
+```
+
+Filter by state:
+
+```bash
+.venv/bin/python sovereign_starter_db.py --state GA,TX,CA
+```
+
+Pull a different award-history window:
+
+```bash
+.venv/bin/python sovereign_starter_db.py --years 5
+```
+
+Set an output path:
+
+```bash
+.venv/bin/python sovereign_starter_db.py --output data/sovereign_db_sample.csv
+```
+
+Only include suppliers at or above a tier:
+
+```bash
+.venv/bin/python sovereign_starter_db.py --tier 2
+```
+
+Combine options:
+
+```bash
+.venv/bin/python sovereign_starter_db.py \
+  --sam-extract data/SAM_PUBLIC_EXTRACT.csv \
+  --naics 332811,332812,336413 \
+  --state OH,PA,TX \
+  --years 3 \
+  --tier 3 \
+  --output data/sovereign_db_metal_suppliers.csv \
+  --sqlite
+```
+
+### Download The SAM FOIA Extract
+
+1. Go to [https://sam.gov/data-services](https://sam.gov/data-services).
+2. Open the public entity registration or FOIA extract download area.
+3. Download the current monthly public extract ZIP.
+4. Unzip it locally.
+5. Move the pipe-delimited CSV into `data/`.
+6. Run the pipeline with `--sam-extract data/<filename>.csv`.
+
+The SAM extract can be large. Files under `data/` are ignored by Git except for `data/.gitkeep`.
+
+### Output Columns
+
+| Column | Meaning |
+|---|---|
+| `company_name` | Recipient name from USASpending. |
+| `uei` | Unique Entity ID from USASpending. |
+| `cage_code` | CAGE code from SAM, blank if SAM is not loaded. |
+| `naics_code` | Primary award NAICS code. |
+| `naics_label` | Human-readable target NAICS label. |
+| `state` | Place-of-performance state or SAM physical-address state. |
+| `city` | Place-of-performance city code/name or SAM city. |
+| `zip` | SAM physical-address ZIP. |
+| `contact_name` | SAM government business POC full name. |
+| `contact_phone` | SAM government business POC phone. |
+| `contact_email` | SAM government business POC email. |
+| `dod_award_amount` | Highest single DoD award retained for the supplier. |
+| `awarding_agency` | Awarding agency from USASpending. |
+| `award_id` | Award id for the retained award row. |
+| `nadcap_status` | Always `VERIFY eAuditNet`. |
+| `cmmc_status` | Always `VERIFY SPRS`. |
+| `sovereign_tier` | Tier derived from award amount. |
+| `pulled_at` | UTC pull date, `YYYY-MM-DD`. |
+
+### Tiering
+
+- `Tier 1 (Prime)`: award amount >= $10,000,000.
+- `Tier 2 (Mid)`: award amount >= $1,000,000.
+- `Tier 3 (Small)`: award amount >= $100,000.
+- `Tier 4 (Emerging)`: award amount < $100,000.
+
+### Sample CSV Preview
+
+This command was run on May 22, 2026:
+
+```bash
+.venv/bin/python sovereign_starter_db.py \
+  --naics 332811 \
+  --years 1 \
+  --tier 3 \
+  --output /tmp/sovereign_sample.csv
+```
+
+It returned these first rows from USASpending only. SAM was not loaded, so CAGE/contact/ZIP columns are blank:
+
+```csv
+company_name,uei,cage_code,naics_code,naics_label,state,city,zip,contact_name,contact_phone,contact_email,dod_award_amount,awarding_agency,award_id,nadcap_status,cmmc_status,sovereign_tier,pulled_at
+AJAX TOCCO MAGNETHERMIC CORP,RYJNLVLDA1K5,,332811,Metal Heat Treating,OH,,,,,,9959800.0,Department of Defense,W911PT24C0003,VERIFY eAuditNet,VERIFY SPRS,Tier 2 (Mid),2026-05-22
+"BRADDOCK METALLURGICAL, INC.",DGRNR5KG8QU1,,332811,Metal Heat Treating,FL,,,,,,249356.0,Department of Defense,N6852025P0016,VERIFY eAuditNet,VERIFY SPRS,Tier 3 (Small),2026-05-22
+"COLONNA'S SHIP YARD, INCORPORATED",JSAXGRLNEJ63,,332811,Metal Heat Treating,ME,,,,,,152098.0,Department of Defense,N3904025P1040,VERIFY eAuditNet,VERIFY SPRS,Tier 3 (Small),2026-05-22
+"IDEA INDUCTION, LLC",SYRZL74HPMV9,,332811,Metal Heat Treating,WA,,,,,,132900.0,Department of Defense,W912DW25P0048,VERIFY eAuditNet,VERIFY SPRS,Tier 3 (Small),2026-05-22
+```
+
+### Next Steps For Verification
+
+- Manually cross-check NADCAP status in eAuditNet.
+- Verify CMMC/SPRS status through authorized PIEE/SPRS access.
+- Add buyer-approved review fields before using the data to release controlled RFQs.
+
 ## Metal Quote-to-Order Backend
 
 This repo now includes a separate FastAPI backend for custom metal part quote-to-order intake. It is intentionally **not** a marketplace, supplier-matching engine, automated supplier router, ML pricing system, or guaranteed instant quote product.
