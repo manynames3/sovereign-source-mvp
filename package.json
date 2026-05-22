@@ -10,6 +10,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "serverless:build": "node scripts/build-serverless.mjs",
+    "suppliers:pipeline": ".venv/bin/python sovereign_starter_db.py",
+    "suppliers:import": "node scripts/import-supplier-csv-to-aws.mjs",
     "db:dev": "prisma dev --name sovereign-source --detach",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",

@@ -92,6 +92,16 @@ export async function handler(
       return json(200, await createAccessRequest(event), origin);
     }
 
+    const publicDataRoom = path.match(/^\/data-room\/([^/]+)$/);
+    if (method === "GET" && publicDataRoom) {
+      return json(200, await openDataRoom(publicDataRoom[1], event), origin);
+    }
+
+    const publicDataRoomResponse = path.match(/^\/data-room\/([^/]+)\/respond$/);
+    if (method === "POST" && publicDataRoomResponse) {
+      return json(200, await respondToInvite(publicDataRoomResponse[1], await readJson(event), event), origin);
+    }
+
     const user = await authenticate(event);
 
     if (method === "GET" && path === "/me") {
@@ -191,16 +201,6 @@ export async function handler(
     const inviteResponse = path.match(/^\/invites\/([^/]+)\/response$/);
     if (method === "PATCH" && inviteResponse) {
       return json(200, await updateInviteResponse(user, inviteResponse[1], await readJson(event), event), origin);
-    }
-
-    const dataRoom = path.match(/^\/data-room\/([^/]+)$/);
-    if (method === "GET" && dataRoom) {
-      return json(200, await openDataRoom(dataRoom[1], event), origin);
-    }
-
-    const dataRoomResponse = path.match(/^\/data-room\/([^/]+)\/respond$/);
-    if (method === "POST" && dataRoomResponse) {
-      return json(200, await respondToInvite(dataRoomResponse[1], await readJson(event), event), origin);
     }
 
     if (method === "GET" && path === "/audit/export") {

@@ -35,6 +35,17 @@ pnpm build
 pnpm prisma:validate
 ```
 
+## Recommended Upload Package
+
+For best requirement detection in aerospace and defense sourcing, upload a complete package when available:
+
+- STEP/STP model for geometry and rough manufacturability review.
+- PDF drawing for tolerances, GD&T, material notes, finish, inspection, and revision.
+- XLSX/CSV PO, BOM, or line list for quantities, due dates, part numbers, and multiple items.
+- ZIP package when drawings, models, specs, QA clauses, and flowdowns are bundled together.
+
+Native CAD files can be stored, but should usually be routed to manual review unless a neutral STEP/STP export and drawing are also provided.
+
 ## Supplier Starter Database Pipeline
 
 This repo also includes `sovereign_starter_db.py`, a Python pipeline that builds a starter supplier database for Sovereign Source from free, legally clean US government open-data sources. It is designed to help identify defense-relevant suppliers by DoD award history and target NAICS codes, then optionally enrich those rows with active SAM.gov FOIA public extract fields.
@@ -507,6 +518,46 @@ The deployed low-idle pilot stack now includes Cognito, DynamoDB on-demand, priv
 - Cognito app client: `7l1ft4vp054o66vq6rbu1k5t51`
 
 The dashboard uses Cognito sessions for `/dashboard`, loads tenant state from `/dashboard/state`, writes uploads through signed S3 URLs, and persists matching, classification, evidence review, RFQ invite, supplier response, revocation, and audit actions server-side.
+
+## SAM.gov / USASpending Supplier Import
+
+The supplier import path is batch-only and does not add meaningful idle cost. It uses the existing private S3 bucket for CSV provenance storage and the existing DynamoDB on-demand table for tenant-scoped records.
+
+Run the open-data supplier pipeline:
+
+```bash
+pnpm suppliers:pipeline -- \
+  --sam-extract data/SAM_FOIA_EXTRACT.csv \
+  --naics 336413,336412,332811,332812,332813,541380 \
+  --years 3 \
+  --tier 3 \
+  --output data/sovereign_suppliers.csv
+```
+
+If no SAM.gov FOIA extract is available, omit `--sam-extract`; the CSV will still include USASpending award provenance, but CAGE/contact/ZIP fields will be blank and must be reviewed manually.
+
+Dry-run the production import:
+
+```bash
+pnpm suppliers:import -- \
+  --csv data/sovereign_suppliers.csv \
+  --tenant-id org-buyer \
+  --table sovereign-source-pilot-data \
+  --bucket sovereign-source-pilot-documents-636305658578-a8152c9f
+```
+
+Apply the import:
+
+```bash
+pnpm suppliers:import -- \
+  --csv data/sovereign_suppliers.csv \
+  --tenant-id org-buyer \
+  --table sovereign-source-pilot-data \
+  --bucket sovereign-source-pilot-documents-636305658578-a8152c9f \
+  --apply
+```
+
+Each imported supplier writes organization, profile, facility, inferred capability, registry check, capacity signal, evidence placeholders, import manifest, and audit records under `TENANT#<tenant-id>`. The importer preserves row-level provenance fields, uploads the source CSV under `imports/suppliers/<tenant-id>/...`, and intentionally creates `MANUAL_REQUIRED` placeholders for `VERIFY eAuditNet` and `VERIFY SPRS`. These records support review workflow; they do not certify supplier compliance.
 
 Additional production-readiness notes:
 
