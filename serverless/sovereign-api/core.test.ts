@@ -4,6 +4,7 @@ import {
   compareTokenHash,
   createInviteToken,
   evaluateDataRoomAccess,
+  evaluateEvidenceExpiration,
   hashInviteToken,
   requireAnyRole,
   resolveTenantId,
@@ -87,5 +88,21 @@ describe("serverless pilot core", () => {
     expect(hash).not.toContain(token);
     expect(compareTokenHash(token, hash)).toBe(true);
     expect(compareTokenHash(`${token}x`, hash)).toBe(false);
+  });
+
+  it("computes evidence expiration status changes", () => {
+    const data = cloneDemoData();
+    const validEvidence = data.complianceEvidence.find((item) => item.status === "VALID" && item.expirationDate)!;
+    const expired = evaluateEvidenceExpiration(
+      { ...validEvidence, expirationDate: "2026-05-01T00:00:00.000Z" },
+      new Date("2026-05-22T12:00:00.000Z"),
+    );
+    const expiringSoon = evaluateEvidenceExpiration(
+      { ...validEvidence, expirationDate: "2026-06-01T00:00:00.000Z" },
+      new Date("2026-05-22T12:00:00.000Z"),
+    );
+
+    expect(expired?.status).toBe("EXPIRED");
+    expect(expiringSoon?.status).toBe("EXPIRES_SOON");
   });
 });

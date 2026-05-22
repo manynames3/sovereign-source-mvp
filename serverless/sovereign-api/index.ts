@@ -1,10 +1,11 @@
-import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
+import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2, ScheduledEvent } from "aws-lambda";
 import {
   BatchWriteItemCommand,
   DynamoDBClient,
   GetItemCommand,
   PutItemCommand,
   QueryCommand,
+  ScanCommand,
 } from "@aws-sdk/client-dynamodb";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -17,11 +18,14 @@ import type {
   ComplianceEvidence,
   DocumentRecord,
   Facility,
+  Machine,
   Organization,
+  RegistryCheck,
   RFQ,
   RFQInvite,
   SupplierMatch,
   SupplierProfile,
+  User,
   UserRole,
   WorkPackage,
 } from "../../src/lib/domain";
@@ -31,6 +35,7 @@ import {
   buyerWriteRoles,
   createId,
   createInviteToken,
+  evaluateEvidenceExpiration,
   evaluateDataRoomAccess,
   hashInviteToken,
   requireAnyRole,
@@ -62,7 +67,13 @@ type StoredItem = Record<string, unknown> & {
   id?: string;
 };
 
-export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyStructuredResultV2> {
+export async function handler(
+  event: APIGatewayProxyEventV2 | ScheduledEvent,
+): Promise<APIGatewayProxyStructuredResultV2 | Record<string, unknown>> {
+  if (isScheduledEvent(event)) {
+    return expireEvidenceForAllTenants(new Date());
+  }
+
   const origin = event.headers.origin ?? event.headers.Origin;
 
   if (event.requestContext.http.method === "OPTIONS") {
@@ -87,8 +98,36 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       return json(200, { user }, origin);
     }
 
+    if (method === "GET" && path === "/dashboard/state") {
+      return json(200, await getDashboardState(user, event.queryStringParameters ?? {}), origin);
+    }
+
     if (method === "POST" && path === "/admin/demo-seed") {
       return json(200, await seedDemoTenant(user, await readJson(event)), origin);
+    }
+
+    if (method === "GET" && path === "/admin/buyer-orgs") {
+      return json(200, await listBuyerOrgs(user, event.queryStringParameters ?? {}), origin);
+    }
+
+    if (method === "POST" && path === "/admin/buyer-orgs") {
+      return json(200, await createBuyerOrg(user, await readJson(event), event), origin);
+    }
+
+    if (method === "GET" && path === "/admin/users") {
+      return json(200, await listTenantUsers(user, event.queryStringParameters ?? {}), origin);
+    }
+
+    if (method === "POST" && path === "/admin/users") {
+      return json(200, await createTenantUser(user, await readJson(event), event), origin);
+    }
+
+    if (method === "POST" && path === "/admin/suppliers/onboard") {
+      return json(200, await onboardSupplier(user, await readJson(event), event), origin);
+    }
+
+    if (method === "POST" && path === "/admin/evidence/expire-stale") {
+      return json(200, await expireEvidenceForTenant(user, await readJson(event), event), origin);
     }
 
     if (method === "GET" && path === "/suppliers") {
@@ -147,6 +186,11 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     const revoke = path.match(/^\/invites\/([^/]+)\/revoke$/);
     if (method === "PATCH" && revoke) {
       return json(200, await revokeInvite(user, revoke[1], await readJson(event), event), origin);
+    }
+
+    const inviteResponse = path.match(/^\/invites\/([^/]+)\/response$/);
+    if (method === "PATCH" && inviteResponse) {
+      return json(200, await updateInviteResponse(user, inviteResponse[1], await readJson(event), event), origin);
     }
 
     const dataRoom = path.match(/^\/data-room\/([^/]+)$/);
@@ -223,6 +267,12 @@ async function createAccessRequest(event: APIGatewayProxyEventV2) {
   };
 }
 
+async function getDashboardState(user: CurrentUser, query: Record<string, string | undefined>) {
+  const tenantId = resolveTenantId(user, query.tenant_id);
+  const data = await loadTenantData(tenantId);
+  return { tenant_id: tenantId, data };
+}
+
 async function seedDemoTenant(user: CurrentUser, payload: Record<string, unknown>) {
   requireAnyRole(user, ["PLATFORM_ADMIN", "BUYER_ADMIN"]);
   const tenantId = resolveTenantId(user, stringOrUndefined(payload.tenant_id) ?? stringOrUndefined(payload.tenantId));
@@ -263,6 +313,293 @@ async function seedDemoTenant(user: CurrentUser, payload: Record<string, unknown
     }),
   );
   return { tenant_id: tenantId, seeded_items: items.length };
+}
+
+async function listBuyerOrgs(user: CurrentUser, query: Record<string, string | undefined>) {
+  requireAnyRole(user, ["BUYER_ADMIN", "PLATFORM_ADMIN"]);
+  const tenantId = resolveTenantId(user, query.tenant_id);
+  const data = await loadTenantData(tenantId);
+  return {
+    buyer_orgs: data.organizations.filter((org) => org.type === "BUYER"),
+  };
+}
+
+async function createBuyerOrg(user: CurrentUser, payload: Record<string, unknown>, event: APIGatewayProxyEventV2) {
+  requireAnyRole(user, ["BUYER_ADMIN", "PLATFORM_ADMIN"]);
+  const requestedTenantId = stringOrUndefined(payload.tenant_id) ?? stringOrUndefined(payload.tenantId);
+  const tenantId = resolveTenantId(user, requestedTenantId);
+  const now = new Date().toISOString();
+  const orgPayload = objectOrEmpty(payload.organization);
+  const org: Organization = {
+    id: stringOrUndefined(orgPayload.id) ?? tenantId,
+    name: requireString(orgPayload.name ?? payload.name, "organization.name"),
+    type: "BUYER",
+    cageCode: stringOrUndefined(orgPayload.cageCode ?? orgPayload.cage_code ?? payload.cageCode),
+    uei: stringOrUndefined(orgPayload.uei ?? payload.uei),
+    country: stringOrUndefined(orgPayload.country ?? payload.country) ?? "US",
+    state: stringOrUndefined(orgPayload.state ?? payload.state),
+    createdAt: now,
+    updatedAt: now,
+  };
+  await putItem(tenantItem(tenantId, "organization", `ORG#${org.id}`, org));
+  await putTenantAudit(
+    tenantId,
+    buildAudit({
+      tenantId,
+      actorUserId: user.userId,
+      orgId: user.tenantId,
+      action: "BUYER_ORG_CREATED",
+      entityType: "Organization",
+      entityId: org.id,
+      metadataJson: { name: org.name },
+      ipAddress: event.requestContext.http.sourceIp,
+      createdAt: now,
+    }),
+  );
+  return { buyer_org: org };
+}
+
+async function listTenantUsers(user: CurrentUser, query: Record<string, string | undefined>) {
+  requireAnyRole(user, ["BUYER_ADMIN", "PLATFORM_ADMIN"]);
+  const tenantId = resolveTenantId(user, query.tenant_id);
+  const data = await loadTenantData(tenantId);
+  return { users: data.users };
+}
+
+async function createTenantUser(user: CurrentUser, payload: Record<string, unknown>, event: APIGatewayProxyEventV2) {
+  requireAnyRole(user, ["BUYER_ADMIN", "PLATFORM_ADMIN"]);
+  const tenantId = resolveTenantId(user, stringOrUndefined(payload.tenant_id) ?? stringOrUndefined(payload.tenantId));
+  const role = requireString(payload.role, "role") as UserRole;
+  if (
+    ![
+      "BUYER_ADMIN",
+      "BUYER_PROCUREMENT",
+      "SUPPLIER_ADMIN",
+      "SUPPLIER_ESTIMATOR",
+      "COMPLIANCE_REVIEWER",
+      "PLATFORM_ADMIN",
+    ].includes(role)
+  ) {
+    throw new ApiError(400, "Invalid role.");
+  }
+  const now = new Date().toISOString();
+  const appUser: User = {
+    id: stringOrUndefined(payload.id) ?? createId("user"),
+    organizationId: requireString(payload.organizationId ?? payload.organization_id, "organization_id"),
+    name: requireString(payload.name, "name"),
+    email: requireString(payload.email, "email").toLowerCase(),
+    role,
+    createdAt: now,
+  };
+  await putItem(tenantItem(tenantId, "user", `USER#${appUser.id}`, appUser));
+  await putTenantAudit(
+    tenantId,
+    buildAudit({
+      tenantId,
+      actorUserId: user.userId,
+      orgId: user.tenantId,
+      action: "TENANT_USER_CREATED",
+      entityType: "User",
+      entityId: appUser.id,
+      metadataJson: { email: appUser.email, role },
+      ipAddress: event.requestContext.http.sourceIp,
+      createdAt: now,
+    }),
+  );
+  return {
+    user: appUser,
+    note: "Cognito account creation remains an administrator action; this endpoint stores the application user profile.",
+  };
+}
+
+async function onboardSupplier(user: CurrentUser, payload: Record<string, unknown>, event: APIGatewayProxyEventV2) {
+  requireAnyRole(user, ["BUYER_ADMIN", "COMPLIANCE_REVIEWER", "PLATFORM_ADMIN"]);
+  const tenantId = resolveTenantId(user, stringOrUndefined(payload.tenant_id) ?? stringOrUndefined(payload.tenantId));
+  const now = new Date().toISOString();
+  const orgPayload = objectOrEmpty(payload.organization);
+  const supplierOrg: Organization = {
+    id: stringOrUndefined(orgPayload.id) ?? createId("supplier"),
+    name: requireString(orgPayload.name ?? payload.name, "organization.name"),
+    type: "SUPPLIER",
+    cageCode: stringOrUndefined(orgPayload.cageCode ?? orgPayload.cage_code),
+    uei: stringOrUndefined(orgPayload.uei),
+    country: stringOrUndefined(orgPayload.country) ?? "US",
+    state: stringOrUndefined(orgPayload.state),
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const profilePayload = objectOrEmpty(payload.profile);
+  const profile: SupplierProfile = {
+    id: stringOrUndefined(profilePayload.id) ?? createId("profile"),
+    supplierOrgId: supplierOrg.id,
+    lifecycleStage: (stringOrUndefined(profilePayload.lifecycleStage ?? profilePayload.lifecycle_stage) ?? "DEVELOPMENTAL") as SupplierProfile["lifecycleStage"],
+    summary: requireString(profilePayload.summary ?? payload.summary, "profile.summary"),
+    website: stringOrUndefined(profilePayload.website),
+    primaryContact: requireString(profilePayload.primaryContact ?? profilePayload.primary_contact, "profile.primary_contact"),
+    status: (stringOrUndefined(profilePayload.status) ?? "NEEDS_REVIEW") as SupplierProfile["status"],
+  };
+
+  const facilityPayload = objectOrEmpty(payload.facility);
+  const facility: Facility = {
+    id: stringOrUndefined(facilityPayload.id) ?? createId("facility"),
+    supplierOrgId: supplierOrg.id,
+    name: requireString(facilityPayload.name, "facility.name"),
+    address: requireString(facilityPayload.address, "facility.address"),
+    country: stringOrUndefined(facilityPayload.country) ?? supplierOrg.country,
+    state: stringOrUndefined(facilityPayload.state) ?? supplierOrg.state,
+    cageCode: stringOrUndefined(facilityPayload.cageCode ?? facilityPayload.cage_code) ?? supplierOrg.cageCode,
+    isActive: facilityPayload.isActive === undefined ? true : Boolean(facilityPayload.isActive),
+  };
+
+  const capabilities = Array.isArray(payload.capabilities)
+    ? payload.capabilities.map((candidate) => {
+        const capabilityPayload = objectOrEmpty(candidate);
+        const capability: Capability = {
+          id: stringOrUndefined(capabilityPayload.id) ?? createId("capability"),
+          facilityId: stringOrUndefined(capabilityPayload.facilityId ?? capabilityPayload.facility_id) ?? facility.id,
+          processType: requireString(capabilityPayload.processType ?? capabilityPayload.process_type, "capabilities.process_type") as Capability["processType"],
+          materials: stringArray(capabilityPayload.materials),
+          toleranceMinInches: Number(capabilityPayload.toleranceMinInches ?? capabilityPayload.tolerance_min_inches ?? 0.005),
+          maxPartSize: stringOrUndefined(capabilityPayload.maxPartSize ?? capabilityPayload.max_part_size) ?? "requires review",
+          quantityMin: Number(capabilityPayload.quantityMin ?? capabilityPayload.quantity_min ?? 1),
+          quantityMax: Number(capabilityPayload.quantityMax ?? capabilityPayload.quantity_max ?? 1),
+          inspectionCapabilities: stringArray(capabilityPayload.inspectionCapabilities ?? capabilityPayload.inspection_capabilities),
+          notes: stringOrUndefined(capabilityPayload.notes),
+        };
+        return capability;
+      })
+    : [];
+
+  const evidence = Array.isArray(payload.evidence)
+    ? payload.evidence.map((candidate) => {
+        const evidencePayload = objectOrEmpty(candidate);
+        const record: ComplianceEvidence = {
+          id: stringOrUndefined(evidencePayload.id) ?? createId("evidence"),
+          supplierOrgId: supplierOrg.id,
+          facilityId: stringOrUndefined(evidencePayload.facilityId ?? evidencePayload.facility_id) ?? facility.id,
+          type: requireString(evidencePayload.type, "evidence.type") as ComplianceEvidence["type"],
+          status: (stringOrUndefined(evidencePayload.status) ?? "PENDING_REVIEW") as ComplianceEvidence["status"],
+          source: (stringOrUndefined(evidencePayload.source) ?? "SUPPLIER_UPLOAD") as ComplianceEvidence["source"],
+          scopeText: requireString(evidencePayload.scopeText ?? evidencePayload.scope_text, "evidence.scope_text"),
+          certificateNumber: stringOrUndefined(evidencePayload.certificateNumber ?? evidencePayload.certificate_number),
+          issuingBody: stringOrUndefined(evidencePayload.issuingBody ?? evidencePayload.issuing_body),
+          issueDate: stringOrUndefined(evidencePayload.issueDate ?? evidencePayload.issue_date),
+          expirationDate: stringOrUndefined(evidencePayload.expirationDate ?? evidencePayload.expiration_date),
+          reviewedBy: stringOrUndefined(evidencePayload.reviewedBy ?? evidencePayload.reviewed_by),
+          reviewedAt: stringOrUndefined(evidencePayload.reviewedAt ?? evidencePayload.reviewed_at),
+          notes: stringOrUndefined(evidencePayload.notes),
+          fileUrl: stringOrUndefined(evidencePayload.fileUrl ?? evidencePayload.file_url),
+        };
+        return record;
+      })
+    : [];
+
+  await batchPut([
+    tenantItem(tenantId, "organization", `ORG#${supplierOrg.id}`, supplierOrg),
+    tenantItem(tenantId, "supplierProfile", `SUPPLIER_PROFILE#${profile.id}`, profile),
+    tenantItem(tenantId, "facility", `FACILITY#${facility.id}`, facility),
+    ...capabilities.map((capability) => tenantItem(tenantId, "capability", `CAPABILITY#${capability.id}`, capability)),
+    ...evidence.map((record) => tenantItem(tenantId, "evidence", `EVIDENCE#${record.id}`, record)),
+  ]);
+  await putTenantAudit(
+    tenantId,
+    buildAudit({
+      tenantId,
+      actorUserId: user.userId,
+      orgId: user.tenantId,
+      action: "SUPPLIER_ONBOARDED",
+      entityType: "Organization",
+      entityId: supplierOrg.id,
+      metadataJson: {
+        capabilityCount: capabilities.length,
+        evidenceCount: evidence.length,
+        status: profile.status,
+      },
+      ipAddress: event.requestContext.http.sourceIp,
+      createdAt: now,
+    }),
+  );
+
+  return {
+    supplier: supplierOrg,
+    profile,
+    facility,
+    capabilities,
+    evidence,
+  };
+}
+
+async function expireEvidenceForTenant(user: CurrentUser, payload: Record<string, unknown>, event: APIGatewayProxyEventV2) {
+  requireAnyRole(user, ["BUYER_ADMIN", "COMPLIANCE_REVIEWER", "PLATFORM_ADMIN"]);
+  const tenantId = resolveTenantId(user, stringOrUndefined(payload.tenant_id) ?? stringOrUndefined(payload.tenantId));
+  const items = (await queryByPk(`TENANT#${tenantId}`)).filter((item) => item.kind === "evidence");
+  const result = await applyEvidenceExpirationItems(items, new Date(), {
+    actorUserId: user.userId,
+    orgId: user.tenantId,
+    ipAddress: event.requestContext.http.sourceIp,
+  });
+  return {
+    tenant_id: tenantId,
+    checked: result.checked,
+    updated: result.updated,
+  };
+}
+
+async function expireEvidenceForAllTenants(now: Date) {
+  const items = await scanByKind("evidence");
+  const result = await applyEvidenceExpirationItems(items, now, {});
+  return {
+    status: "ok",
+    checked: result.checked,
+    updated: result.updated,
+  };
+}
+
+async function applyEvidenceExpirationItems(
+  items: StoredItem[],
+  now: Date,
+  auditContext: { actorUserId?: string; orgId?: string; ipAddress?: string },
+) {
+  let updated = 0;
+  for (const item of items) {
+    const tenantId = stringOrUndefined(item.tenantId);
+    const evidence = cleanItem<ComplianceEvidence>(item);
+    if (!tenantId || !evidence.id) {
+      continue;
+    }
+    const expiration = evaluateEvidenceExpiration(evidence, now);
+    if (!expiration) {
+      continue;
+    }
+    const nextEvidence: ComplianceEvidence = {
+      ...evidence,
+      status: expiration.status,
+      notes: expiration.reason,
+    };
+    await putItem(tenantItem(tenantId, "evidence", `EVIDENCE#${nextEvidence.id}`, nextEvidence));
+    await putTenantAudit(
+      tenantId,
+      buildAudit({
+        tenantId,
+        actorUserId: auditContext.actorUserId,
+        orgId: auditContext.orgId,
+        action: "EVIDENCE_EXPIRATION_UPDATED",
+        entityType: "ComplianceEvidence",
+        entityId: nextEvidence.id,
+        metadataJson: {
+          supplierOrgId: nextEvidence.supplierOrgId,
+          status: nextEvidence.status,
+          expirationDate: nextEvidence.expirationDate,
+          reason: expiration.reason,
+        },
+        ipAddress: auditContext.ipAddress,
+        createdAt: now.toISOString(),
+      }),
+    );
+    updated += 1;
+  }
+  return { checked: items.length, updated };
 }
 
 async function listSuppliers(user: CurrentUser, query: Record<string, string | undefined>) {
@@ -678,6 +1015,46 @@ async function revokeInvite(user: CurrentUser, inviteId: string, payload: Record
   return { invite: { ...updated, secureTokenHash: "stored-server-side" } };
 }
 
+async function updateInviteResponse(user: CurrentUser, inviteId: string, payload: Record<string, unknown>, event: APIGatewayProxyEventV2) {
+  requireAnyRole(user, ["SUPPLIER_ADMIN", "SUPPLIER_ESTIMATOR", "PLATFORM_ADMIN"]);
+  const tenantId = resolveTenantId(user, stringOrUndefined(payload.tenant_id) ?? stringOrUndefined(payload.tenantId));
+  const invite = await getTenantItem<RFQInvite>(tenantId, `INVITE#${inviteId}`);
+  if (!invite) {
+    throw new ApiError(404, "Invite not found.");
+  }
+  const responseStatus = requireString(payload.responseStatus ?? payload.response_status, "response_status") as RFQInvite["responseStatus"];
+  if (!["QUOTED", "DECLINED", "NO_BID"].includes(responseStatus)) {
+    throw new ApiError(400, "response_status must be QUOTED, DECLINED, or NO_BID.");
+  }
+  const updated: RFQInvite = {
+    ...invite,
+    responseStatus,
+    noBidReason: stringOrUndefined(payload.noBidReason ?? payload.no_bid_reason),
+    quotedLeadTimeDays: numberOrUndefined(payload.quotedLeadTimeDays ?? payload.quoted_lead_time_days),
+    quoteAmount: numberOrUndefined(payload.quoteAmount ?? payload.quote_amount),
+    viewedAt: invite.viewedAt ?? new Date().toISOString(),
+  };
+  await putItem({
+    ...tenantItem(tenantId, "invite", `INVITE#${inviteId}`, updated),
+    gsi1pk: `TOKEN#${updated.secureTokenHash}`,
+    gsi1sk: `INVITE#${inviteId}`,
+  });
+  await putTenantAudit(
+    tenantId,
+    buildAudit({
+      tenantId,
+      actorUserId: user.userId,
+      orgId: user.tenantId,
+      action: "SUPPLIER_RESPONSE_LOGGED",
+      entityType: "RFQInvite",
+      entityId: updated.id,
+      metadataJson: { responseStatus, quoteAmount: updated.quoteAmount, noBidReason: updated.noBidReason },
+      ipAddress: event.requestContext.http.sourceIp,
+    }),
+  );
+  return { invite: { ...updated, secureTokenHash: "stored-server-side" } };
+}
+
 async function openDataRoom(token: string, event: APIGatewayProxyEventV2) {
   const invite = await inviteByToken(token);
   const tenantId = requireString(invite.tenantId, "tenantId");
@@ -912,15 +1289,20 @@ async function loadTenantData(tenantId: string) {
   const items = await queryByPk(`TENANT#${tenantId}`);
   return {
     organizations: cleanByKind<Organization>(items, "organization"),
+    users: cleanByKind<User>(items, "user"),
     facilities: cleanByKind<Facility>(items, "facility"),
     supplierProfiles: cleanByKind<SupplierProfile>(items, "supplierProfile"),
     capabilities: cleanByKind<Capability>(items, "capability"),
+    machines: cleanByKind<Machine>(items, "machine"),
     complianceEvidence: cleanByKind<ComplianceEvidence>(items, "evidence"),
+    registryChecks: cleanByKind<RegistryCheck>(items, "registryCheck"),
     capacitySignals: cleanByKind<CapacitySignal>(items, "capacitySignal"),
     workPackages: cleanByKind<WorkPackage>(items, "workPackage"),
     documents: cleanByKind<DocumentRecord>(items, "document"),
     rfqs: cleanByKind<RFQ>(items, "rfq"),
+    rfqInvites: cleanByKind<RFQInvite>(items, "invite"),
     supplierMatches: cleanByKind<SupplierMatch>(items, "supplierMatch"),
+    auditLogs: cleanByKind<AuditLog>(items, "audit"),
   };
 }
 
@@ -948,6 +1330,25 @@ async function queryByPk(pk: string) {
         TableName: tableName,
         KeyConditionExpression: "pk = :pk",
         ExpressionAttributeValues: marshall({ ":pk": pk }),
+        ExclusiveStartKey,
+      }),
+    );
+    items.push(...(result.Items ?? []).map((item) => unmarshall(item) as StoredItem));
+    ExclusiveStartKey = result.LastEvaluatedKey as Record<string, never> | undefined;
+  } while (ExclusiveStartKey);
+  return items;
+}
+
+async function scanByKind(kind: string) {
+  const items: StoredItem[] = [];
+  let ExclusiveStartKey: Record<string, never> | undefined;
+  do {
+    const result = await ddb.send(
+      new ScanCommand({
+        TableName: tableName,
+        FilterExpression: "#kind = :kind",
+        ExpressionAttributeNames: { "#kind": "kind" },
+        ExpressionAttributeValues: marshall({ ":kind": kind }),
         ExclusiveStartKey,
       }),
     );
@@ -1025,6 +1426,10 @@ function cleanItem<T>(item: StoredItem) {
 
 function normalizePath(path: string) {
   return path.replace(/\/+$/, "") || "/";
+}
+
+function isScheduledEvent(event: APIGatewayProxyEventV2 | ScheduledEvent): event is ScheduledEvent {
+  return "source" in event && event.source === "aws.events";
 }
 
 async function readJson(event: APIGatewayProxyEventV2) {

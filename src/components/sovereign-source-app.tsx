@@ -17,7 +17,6 @@ import {
   History,
   LockKeyhole,
   PackagePlus,
-  PlayCircle,
   RefreshCcw,
   Route,
   Search,
@@ -25,14 +24,25 @@ import {
   ShieldCheck,
   SquarePen,
   UploadCloud,
-  Users,
   UserCheck,
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { canAccessDocument } from "@/lib/access-control";
 import { createAuditLog, describeAuditAction } from "@/lib/audit";
+import {
+  apiBaseUrl,
+  apiRequest,
+  clearStoredAuth,
+  completeCognitoRedirect,
+  type DashboardStateResponse,
+  getStoredAuth,
+  isAuthConfigured,
+  startCognitoLogin,
+  type StoredAuth,
+} from "@/lib/auth-client";
 import type {
   AuditLog,
   ComplianceEvidence,
@@ -42,6 +52,7 @@ import type {
   EvidenceType,
   MatchStatus,
   ProcessType,
+  RFQ,
   RFQInvite,
   SupplierMatch,
   WorkPackage,
@@ -62,6 +73,8 @@ type DemoRole = "BUYER" | "REVIEWER" | "SUPPLIER";
 type IntakeMode = "DRAWING" | "PO";
 
 type IntakeStage = "UPLOAD" | "REQUIREMENTS" | "CURATION" | "MATCHING" | "REVIEW" | "RFQ";
+
+type WorkspaceTab = "intake" | "qualification" | "rfq" | "review" | "audit";
 
 type IntakeFile = {
   name: string;
@@ -229,17 +242,12 @@ const networkControls = [
   "Human support for complex jobs",
 ];
 
-const navItems: Array<{ label: string; href: string; Icon: LucideIcon }> = [
-  { label: "Upload Request", href: "source-intake", Icon: UploadCloud },
-  { label: "Dashboard", href: "dashboard", Icon: ClipboardList },
-  { label: "Demo Guide", href: "demo-guide", Icon: PlayCircle },
-  { label: "Suppliers", href: "suppliers", Icon: Factory },
-  { label: "Evidence", href: "evidence", Icon: BadgeCheck },
-  { label: "Work Packages", href: "work-packages", Icon: PackagePlus },
-  { label: "Matching", href: "matching", Icon: Search },
-  { label: "Dispatch", href: "dispatch", Icon: Send },
-  { label: "Supplier Portal", href: "portal", Icon: UserCheck },
-  { label: "Audit", href: "audit", Icon: History },
+const workspaceTabs: Array<{ id: WorkspaceTab; label: string; description: string; Icon: LucideIcon }> = [
+  { id: "intake", label: "Intake", description: "Upload package", Icon: UploadCloud },
+  { id: "qualification", label: "Qualification", description: "Supplier fit", Icon: Search },
+  { id: "rfq", label: "RFQ", description: "Invites and responses", Icon: Send },
+  { id: "review", label: "Review", description: "Evidence gates", Icon: BadgeCheck },
+  { id: "audit", label: "Audit", description: "Access trail", Icon: History },
 ];
 
 const demoRoles: Array<{ id: DemoRole; label: string; description: string }> = [
@@ -260,47 +268,11 @@ const demoRoles: Array<{ id: DemoRole; label: string; description: string }> = [
   },
 ];
 
-const walkthroughSteps = [
-  {
-    title: "Open the controlled bracket package",
-    role: "Buyer",
-    target: "work-packages",
-    detail: "The package is ITAR technical data, requires AS9100, ITAR evidence, JCP DD2345, CMMC Level 2, 5-axis titanium capability, and +/-0.0005 in tolerance.",
-  },
-  {
-    title: "Approve the classification gate",
-    role: "Compliance Reviewer",
-    target: "work-packages",
-    detail: "Matching and data release stay blocked unless the buyer-side classification approval is present.",
-  },
-  {
-    title: "Run deterministic matching",
-    role: "Buyer",
-    target: "matching",
-    detail: "Vector is eligible; Keystone needs manual review for CMMC; expired, missing, and capability-mismatch suppliers are blocked with reasons.",
-  },
-  {
-    title: "Release a secure RFQ invite",
-    role: "Buyer",
-    target: "dispatch",
-    detail: "The demo releases data-room access through expiring RFQ invites. Blueprint files are never represented as email attachments.",
-  },
-  {
-    title: "Respond from the supplier portal",
-    role: "Supplier",
-    target: "portal",
-    detail: "The supplier can view the permitted data-room list, then quote, decline, or no-bid with response metadata.",
-  },
-  {
-    title: "Export the audit trail",
-    role: "Buyer",
-    target: "audit",
-    detail: "The audit export answers who saw what, when, and why for evidence review, matching, dispatch, data-room access, response, and revocation.",
-  },
-];
-
 function createInitialWorkspace(): WorkspaceState {
-  const data = cloneDemoData();
+  return createWorkspaceFromData(cloneDemoData());
+}
+
+function createWorkspaceFromData(data: DemoData): WorkspaceState {
   const workPackage = data.workPackages.find((candidate) => candidate.id === "wp-controlled-bracket");
   return {
     data,
@@ -310,6 +282,14 @@ function createInitialWorkspace(): WorkspaceState {
 
 export function SovereignSourceApp() {
   const [workspace, setWorkspace] = useState<WorkspaceState>(createInitialWorkspace);
+  const [auth, setAuth] = useState<StoredAuth | undefined>();
+  const [apiStatus, setApiStatus] = useState<"demo" | "loading" | "connected" | "error">(() =>
+    apiBaseUrl() && isAuthConfigured() ? "loading" : "demo",
+  );
+  const [apiMessage, setApiMessage] = useState(() =>
+    apiBaseUrl() && isAuthConfigured() ? "Checking Cognito session." : "Demo mode uses browser state only.",
+  );
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>("intake");
   const [activeRole, setActiveRole] = useState<DemoRole>("BUYER");
   const [intakeMode, setIntakeMode] = useState<IntakeMode>("DRAWING");
   const [intakeStage, setIntakeStage] = useState<IntakeStage>("UPLOAD");
@@ -398,7 +378,6 @@ export function SovereignSourceApp() {
   const dataRoomDocuments = dataRoomInvite
     ? data.documents.filter((document) => document.workPackageId === dataRoomInvite.workPackageId)
     : [];
-  const activeRoleCopy = demoRoles.find((role) => role.id === activeRole)!;
   const auditExportRows = auditLogs.map((log) => ({
     when: formatDateTime(log.createdAt),
     who: userName(data, log.actorUserId) ?? organizationName(data, String(log.orgId ?? "")),
@@ -409,9 +388,80 @@ export function SovereignSourceApp() {
     "Who saw what, when, and why",
     ...auditExportRows.map((row) => `${row.when} | ${row.who} | ${row.what} | ${row.why}`),
   ].join("\n");
+  const backendAvailable = Boolean(auth && apiBaseUrl());
+
+  const refreshPersistedWorkspace = useCallback(async (nextAuth: StoredAuth) => {
+    setApiStatus("loading");
+    setApiMessage("Loading persisted tenant data.");
+    let state = await apiRequest<DashboardStateResponse>("/dashboard/state", {}, nextAuth);
+    if (state.data.workPackages.length === 0) {
+      await apiRequest("/admin/demo-seed", { method: "POST", body: JSON.stringify({}) }, nextAuth);
+      state = await apiRequest<DashboardStateResponse>("/dashboard/state", {}, nextAuth);
+    }
+    setWorkspace(createWorkspaceFromData(state.data));
+    setSelectedWorkPackageId(state.data.workPackages[0]?.id ?? "wp-controlled-bracket");
+    setApiStatus("connected");
+    setApiMessage(`Persisted tenant data loaded from ${state.tenant_id}.`);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function initializeBackendSession() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("auth") === "demo" || !isAuthConfigured() || !apiBaseUrl()) {
+        setApiStatus("demo");
+        setApiMessage("Demo mode uses browser state only.");
+        return;
+      }
+
+      setApiStatus("loading");
+      setApiMessage("Checking Cognito session.");
+      try {
+        const nextAuth = (await completeCognitoRedirect()) ?? getStoredAuth();
+        if (!nextAuth) {
+          setApiStatus("error");
+          setApiMessage("Sign in to load persisted pilot data.");
+          return;
+        }
+        if (cancelled) {
+          return;
+        }
+        setAuth(nextAuth);
+        await refreshPersistedWorkspace(nextAuth);
+      } catch (error) {
+        if (!cancelled) {
+          setApiStatus("error");
+          setApiMessage(error instanceof Error ? error.message : "Unable to connect to pilot API.");
+        }
+      }
+    }
+
+    void initializeBackendSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshPersistedWorkspace]);
 
   function appendAudit(dataToUpdate: DemoData, log: AuditLog) {
     dataToUpdate.auditLogs = [log, ...dataToUpdate.auditLogs];
+  }
+
+  async function runPersistedAction(action: () => Promise<void>) {
+    if (!auth || !apiBaseUrl()) {
+      return false;
+    }
+    try {
+      setApiStatus("loading");
+      await action();
+      await refreshPersistedWorkspace(auth);
+      return true;
+    } catch (error) {
+      setApiStatus("error");
+      setApiMessage(error instanceof Error ? error.message : "API action failed.");
+      return true;
+    }
   }
 
   function resetDemoData() {
@@ -430,25 +480,10 @@ export function SovereignSourceApp() {
     setSelectedInviteSuppliers(["sup-a"]);
     setAccessDecision("Released data-room access ready.");
     setDataRoomInviteId(undefined);
+    setActiveTab("intake");
   }
 
-  function startControlledWalkthrough() {
-    setActiveRole("BUYER");
-    setSelectedWorkPackageId("wp-controlled-bracket");
-    setActiveSupplierId("sup-a");
-    setMatchFilter("ALL");
-    scrollToSection("demo-guide");
-  }
-
-  function jumpToDemoTarget(target: string, roleLabel: string) {
-    const role = demoRoles.find((candidate) => candidate.label === roleLabel);
-    if (role) {
-      setActiveRole(role.id);
-    }
-    scrollToSection(target);
-  }
-
-  function handleIntakeUpload(files: FileList | null) {
+  async function handleIntakeUpload(files: FileList | null) {
     if (!files || files.length === 0) {
       return;
     }
@@ -462,6 +497,34 @@ export function SovereignSourceApp() {
     setIntakeStage("REQUIREMENTS");
     setSelectedWorkPackageId("wp-controlled-bracket");
     setBuilder(defaultBuilder);
+
+    if (auth && apiBaseUrl() && selectedWorkPackage) {
+      await runPersistedAction(async () => {
+        for (const file of Array.from(files)) {
+          const result = await apiRequest<{
+            upload_url: string;
+            document: { id: string };
+          }>(
+            `/work-packages/${selectedWorkPackage.id}/documents/upload-url`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                filename: file.name,
+                content_type: file.type || "application/octet-stream",
+                size_bytes: file.size,
+                classification: selectedWorkPackage.dataClassification,
+              }),
+            },
+            auth,
+          );
+          await fetch(result.upload_url, {
+            method: "PUT",
+            headers: { "Content-Type": file.type || "application/octet-stream" },
+            body: file,
+          });
+        }
+      });
+    }
   }
 
   function loadSampleIntake() {
@@ -478,6 +541,16 @@ export function SovereignSourceApp() {
     setIntakeStage("REVIEW");
     setSelectedWorkPackageId("wp-controlled-bracket");
     setMatchFilter("ALL");
+    if (backendAvailable && selectedWorkPackage) {
+      void runPersistedAction(async () => {
+        await apiRequest(
+          `/work-packages/${selectedWorkPackage.id}/match`,
+          { method: "POST", body: JSON.stringify({}) },
+          auth,
+        );
+      }).then(() => setActiveTab("qualification"));
+      return;
+    }
     setWorkspace((current) => {
       const workPackage = current.data.workPackages.find(
         (candidate) => candidate.id === "wp-controlled-bracket",
@@ -505,10 +578,20 @@ export function SovereignSourceApp() {
       );
       return { data: dataCopy, matches: result.matches };
     });
-    scrollToSection("matching");
+    setActiveTab("qualification");
   }
 
   function runMatchForSelected() {
+    if (backendAvailable && selectedWorkPackage) {
+      void runPersistedAction(async () => {
+        await apiRequest(
+          `/work-packages/${selectedWorkPackage.id}/match`,
+          { method: "POST", body: JSON.stringify({}) },
+          auth,
+        );
+      });
+      return;
+    }
     setWorkspace((current) => {
       const workPackage = current.data.workPackages.find((candidate) => candidate.id === selectedWorkPackageId);
       if (!workPackage) {
@@ -535,6 +618,19 @@ export function SovereignSourceApp() {
   }
 
   function approveClassification() {
+    if (backendAvailable && selectedWorkPackage) {
+      void runPersistedAction(async () => {
+        await apiRequest(
+          `/work-packages/${selectedWorkPackage.id}/classification`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ data_classification: selectedWorkPackage.dataClassification }),
+          },
+          auth,
+        );
+      });
+      return;
+    }
     setWorkspace((current) => {
       const dataCopy = structuredClone(current.data);
       const workPackage = dataCopy.workPackages.find((candidate) => candidate.id === selectedWorkPackageId);
@@ -559,6 +655,31 @@ export function SovereignSourceApp() {
   }
 
   function createWorkPackage() {
+    if (backendAvailable) {
+      void runPersistedAction(async () => {
+        await apiRequest(
+          "/work-packages",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              title: builder.title,
+              description: "Buyer-created work package from the MVP builder.",
+              data_classification: builder.classification,
+              required_compliance: builder.compliance,
+              required_processes: [builder.process],
+              required_materials: [builder.material],
+              required_inspection: ["CMM"],
+              tolerance_required_inches: Number(builder.tolerance),
+              quantity: Number(builder.quantity),
+              due_date: "2026-08-15",
+              lifecycle_stage_target: "SCALING",
+            }),
+          },
+          auth,
+        );
+      });
+      return;
+    }
     const newWorkPackageId = `wp-created-${data.workPackages.length + 1}`;
     const newWorkPackage: WorkPackage = {
       id: newWorkPackageId,
@@ -599,6 +720,19 @@ export function SovereignSourceApp() {
   }
 
   function reviewEvidence(evidenceId: string, status: EvidenceStatus) {
+    if (backendAvailable) {
+      void runPersistedAction(async () => {
+        await apiRequest(
+          `/evidence/${evidenceId}/review`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ status }),
+          },
+          auth,
+        );
+      });
+      return;
+    }
     setWorkspace((current) => {
       const dataCopy = structuredClone(current.data);
       const evidence = dataCopy.complianceEvidence.find((candidate) => candidate.id === evidenceId);
@@ -638,6 +772,40 @@ export function SovereignSourceApp() {
     }
 
     setIntakeStage("RFQ");
+    setActiveTab("rfq");
+    if (backendAvailable) {
+      void runPersistedAction(async () => {
+        const created = await apiRequest<{ rfq: RFQ }>(
+          "/rfqs",
+          {
+            method: "POST",
+            body: JSON.stringify({ work_package_id: selectedWorkPackage.id }),
+          },
+          auth,
+        );
+        for (const supplierId of supplierIds) {
+          const facilityId =
+            workspace.matches.find((match) => match.supplierOrgId === supplierId)?.facilityId ??
+            data.facilities.find((facility) => facility.supplierOrgId === supplierId)?.id;
+          if (!facilityId) {
+            continue;
+          }
+          await apiRequest(
+            `/rfqs/${created.rfq.id}/invites`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                supplier_org_id: supplierId,
+                facility_id: facilityId,
+                expires_in_days: 14,
+              }),
+            },
+            auth,
+          );
+        }
+      });
+      return;
+    }
     setWorkspace((current) => {
       const dataCopy = structuredClone(current.data);
       const rfqId = `rfq-created-${current.data.rfqs.length + 1}`;
@@ -689,6 +857,24 @@ export function SovereignSourceApp() {
   }
 
   function updateInviteResponse(inviteId: string, response: RFQInvite["responseStatus"]) {
+    if (backendAvailable) {
+      void runPersistedAction(async () => {
+        await apiRequest(
+          `/invites/${inviteId}/response`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              response_status: response,
+              quote_amount: response === "QUOTED" ? 128500 : undefined,
+              quoted_lead_time_days: response === "QUOTED" ? 42 : undefined,
+              no_bid_reason: response === "NO_BID" ? "Capacity conflict" : undefined,
+            }),
+          },
+          auth,
+        );
+      });
+      return;
+    }
     setWorkspace((current) => {
       const dataCopy = structuredClone(current.data);
       const invite = dataCopy.rfqInvites.find((candidate) => candidate.id === inviteId);
@@ -766,6 +952,12 @@ export function SovereignSourceApp() {
   }
 
   function revokeInvite(inviteId: string) {
+    if (backendAvailable) {
+      void runPersistedAction(async () => {
+        await apiRequest(`/invites/${inviteId}/revoke`, { method: "PATCH", body: JSON.stringify({}) }, auth);
+      });
+      return;
+    }
     setWorkspace((current) => {
       const dataCopy = structuredClone(current.data);
       const invite = dataCopy.rfqInvites.find((candidate) => candidate.id === inviteId);
@@ -787,6 +979,51 @@ export function SovereignSourceApp() {
     });
   }
 
+  const showAuthGate = Boolean(apiBaseUrl() && isAuthConfigured() && !auth && apiStatus !== "demo");
+
+  if (showAuthGate) {
+    return (
+      <div className="grid min-h-screen bg-[#f7f8f4] px-4 py-8 text-[#1b1f1c]">
+        <div className="mx-auto grid w-full max-w-xl content-center">
+          <div className="rounded-lg border border-[#d9ded4] bg-white p-6 shadow-sm">
+            <div className="grid size-12 place-items-center rounded-lg bg-[#263f38] text-white">
+              <LockKeyhole size={22} aria-hidden />
+            </div>
+            <h1 className="mt-5 text-2xl font-semibold">Sign in to open the pilot workspace.</h1>
+            <p className="mt-2 text-sm leading-6 text-[#5d675c]">
+              The dashboard uses Cognito login, server-side tenant checks, and persisted RFQ data.
+            </p>
+            {apiStatus === "error" ? (
+              <p className="mt-4 rounded-md border border-[#e1aaa2] bg-[#fff0ed] px-3 py-2 text-sm text-[#7c2f25]">
+                {apiMessage}
+              </p>
+            ) : (
+              <p className="mt-4 rounded-md border border-[#d9ded4] bg-[#fbfcf8] px-3 py-2 text-sm text-[#5d675c]">
+                {apiMessage}
+              </p>
+            )}
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-[#263f38] bg-[#263f38] px-4 py-2 text-sm font-semibold text-white hover:bg-[#34584d]"
+                onClick={() => void startCognitoLogin()}
+                type="button"
+              >
+                <LockKeyhole size={16} aria-hidden />
+                Sign in
+              </button>
+              <Link
+                className="inline-flex items-center justify-center rounded-md border border-[#c8d0c2] bg-white px-4 py-2 text-sm font-semibold text-[#334139] hover:bg-[#eef2ea]"
+                href="/"
+              >
+                Back to landing page
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f7f8f4] text-[#1b1f1c]">
       <header className="border-b border-[#d9ded4] bg-[#fbfcf8]">
@@ -798,16 +1035,15 @@ export function SovereignSourceApp() {
             <div>
               <h1 className="text-xl font-semibold sm:text-2xl">Sovereign Source MVP</h1>
               <p className="text-sm text-[#5e665d]">
-                Logged in as Aegis Advanced Systems · Curated network plus sourcing software.
+                {auth?.email
+                  ? `${auth.email} · persisted pilot workspace`
+                  : "Aegis Advanced Systems · curated network plus sourcing software"}
               </p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
-            <CommandButton label="New Source Request" onClick={() => scrollToSection("source-intake")}>
+            <CommandButton label="New Source Request" onClick={() => setActiveTab("intake")}>
               <UploadCloud size={16} aria-hidden />
-            </CommandButton>
-            <CommandButton label="Start Walkthrough" onClick={startControlledWalkthrough}>
-              <PlayCircle size={16} aria-hidden />
             </CommandButton>
             <button
               className="inline-flex items-center justify-center gap-2 rounded-md border border-[#c8d0c2] bg-white px-3 py-2 text-sm font-medium text-[#334139] hover:bg-[#eef2ea]"
@@ -820,33 +1056,129 @@ export function SovereignSourceApp() {
             <StatusBadge tone="good" label={`${matchCounts.ELIGIBLE} eligible`} />
             <StatusBadge tone="warn" label={`${matchCounts.MANUAL_REVIEW} manual review`} />
             <StatusBadge tone="bad" label={`${matchCounts.INELIGIBLE} ineligible`} />
+            {isAuthConfigured() && apiBaseUrl() ? (
+              auth ? (
+                <button
+                  className="inline-flex items-center justify-center rounded-md border border-[#c8d0c2] bg-white px-3 py-2 text-sm font-medium text-[#334139] hover:bg-[#eef2ea]"
+                  onClick={() => {
+                    clearStoredAuth();
+                    setAuth(undefined);
+                    setApiStatus("demo");
+                    setApiMessage("Signed out. Demo mode uses browser state only.");
+                  }}
+                  type="button"
+                >
+                  Sign out
+                </button>
+              ) : (
+                <button
+                  className="inline-flex items-center justify-center rounded-md border border-[#263f38] bg-[#263f38] px-3 py-2 text-sm font-medium text-white hover:bg-[#34584d]"
+                  onClick={() => void startCognitoLogin()}
+                  type="button"
+                >
+                  Sign in
+                </button>
+              )
+            ) : null}
           </div>
         </div>
       </header>
 
-      <main className="mx-auto grid w-full max-w-[1500px] gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:px-8">
-        <aside className="h-fit rounded-lg border border-[#d9ded4] bg-white p-3">
-          <nav className="grid gap-1 text-sm">
-            {navItems.map(({ label, href, Icon }) => (
-              <a
-                key={String(href)}
-                className="flex items-center gap-2 rounded-md px-3 py-2 text-[#38413b] hover:bg-[#eef2ea]"
-                href={`#${href}`}
+      <main className="mx-auto grid w-full max-w-[1500px] gap-4 px-4 py-5 sm:px-6 lg:px-8">
+        <section className="rounded-lg border border-[#d9ded4] bg-white p-4">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge tone="neutral" label="active work package" />
+                <StatusBadge tone="warn" label="manual review required" />
+                <StatusBadge tone="good" label="evidence valid" />
+                <StatusBadge tone="bad" label="access suspended" />
+              </div>
+              <h2 className="mt-2 text-xl font-semibold">{selectedWorkPackage.title}</h2>
+              <p className="mt-1 text-sm text-[#667064]">
+                {selectedWorkPackage.dataClassification.replaceAll("_", " ").toLowerCase()} ·{" "}
+                {selectedWorkPackage.requiredProcesses.map((process) => processLabels[process]).join(", ")} ·{" "}
+                {selectedWorkPackage.quantity} parts
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {demoRoles.map((role) => (
+                <button
+                  key={role.id}
+                  className={`rounded-md border px-3 py-2 text-sm font-medium ${
+                    activeRole === role.id
+                      ? "border-[#263f38] bg-[#263f38] text-white"
+                      : "border-[#c8d0c2] bg-[#fbfcf8] text-[#38413b]"
+                  }`}
+                  onClick={() => setActiveRole(role.id)}
+                  type="button"
+                >
+                  {role.label}
+                </button>
+              ))}
+              <button
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-[#c8d0c2] bg-white px-3 py-2 text-sm font-medium text-[#334139] hover:bg-[#eef2ea]"
+                onClick={resetDemoData}
+                type="button"
               >
-                <Icon size={16} aria-hidden />
-                {label}
+                <RefreshCcw size={16} aria-hidden />
+                Reset
+              </button>
+              <a
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-[#263f38] bg-[#263f38] px-3 py-2 text-sm font-medium text-white hover:bg-[#34584d]"
+                download="sovereign-source-audit-export.txt"
+                href={`data:text/plain;charset=utf-8,${encodeURIComponent(auditExportText)}`}
+              >
+                <Download size={16} aria-hidden />
+                Export audit
               </a>
+            </div>
+          </div>
+        </section>
+
+        <nav className="overflow-x-auto rounded-lg border border-[#d9ded4] bg-white p-2">
+          <div className="flex min-w-max gap-2">
+            {workspaceTabs.map(({ id, label, description, Icon }) => (
+              <button
+                key={id}
+                className={`grid min-w-44 gap-1 rounded-md border px-3 py-2 text-left ${
+                  activeTab === id
+                    ? "border-[#263f38] bg-[#263f38] text-white"
+                    : "border-[#dfe5da] bg-[#fbfcf8] text-[#38413b] hover:bg-[#eef2ea]"
+                }`}
+                onClick={() => setActiveTab(id)}
+                type="button"
+              >
+                <span className="flex items-center gap-2 text-sm font-semibold">
+                  <Icon size={16} aria-hidden />
+                  {label}
+                </span>
+                <span className={activeTab === id ? "text-xs text-[#d7e5da]" : "text-xs text-[#667064]"}>
+                  {description}
+                </span>
+              </button>
             ))}
-          </nav>
-        </aside>
+          </div>
+        </nav>
 
         <div className="grid gap-5">
-          <section className="rounded-lg border border-[#dfc47a] bg-[#fff9e7] p-4">
+          <section
+            className={`rounded-lg border p-4 ${
+              apiStatus === "connected"
+                ? "border-[#9bc2a6] bg-[#edf7ee]"
+                : apiStatus === "error"
+                  ? "border-[#e1aaa2] bg-[#fff0ed]"
+                  : "border-[#dfc47a] bg-[#fff9e7]"
+            }`}
+          >
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <p className="font-semibold text-[#5d4308]">Demo data only</p>
-                <p className="text-sm text-[#74581b]">
-                  This public demo uses simulated suppliers, evidence, RFQs, files, and audit events. Do not upload or enter real controlled technical data.
+                <p className="font-semibold text-[#1f261f]">
+                  {apiStatus === "connected" ? "Persisted pilot data" : "Demo data boundary"}
+                </p>
+                <p className="text-sm text-[#5d675c]">
+                  {apiMessage} Do not upload ITAR, CUI, CDI, classified, or export-controlled data
+                  until production controls are verified.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -856,7 +1188,10 @@ export function SovereignSourceApp() {
             </div>
           </section>
 
-          <section id="source-intake" className="rounded-lg border border-[#d9ded4] bg-white">
+          <section
+            id="source-intake"
+            className={activeTab === "intake" ? "rounded-lg border border-[#d9ded4] bg-white" : "hidden"}
+          >
             <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_420px]">
               <div className="grid gap-5 p-4 sm:p-5">
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -916,7 +1251,7 @@ export function SovereignSourceApp() {
                       <input
                         className="sr-only"
                         multiple
-                        onChange={(event) => handleIntakeUpload(event.target.files)}
+                        onChange={(event) => void handleIntakeUpload(event.target.files)}
                         type="file"
                       />
                       <span className="grid gap-3">
@@ -1123,39 +1458,6 @@ export function SovereignSourceApp() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-[#d9ded4] bg-white p-4">
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Users size={18} aria-hidden />
-                  <h2 className="font-semibold">Role Switcher</h2>
-                </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                  {demoRoles.map((role) => (
-                    <button
-                      key={role.id}
-                      className={`rounded-lg border p-3 text-left ${
-                        activeRole === role.id
-                          ? "border-[#263f38] bg-[#eef7f0]"
-                          : "border-[#dfe5da] bg-[#fbfcf8]"
-                      }`}
-                      onClick={() => setActiveRole(role.id)}
-                      type="button"
-                    >
-                      <p className="font-medium">{role.label}</p>
-                      <p className="mt-1 text-sm text-[#667064]">{role.description}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="rounded-lg border border-[#dfe5da] bg-[#fbfcf8] p-3">
-                <p className="text-sm text-[#667064]">Active demo role</p>
-                <p className="mt-1 text-lg font-semibold">{activeRoleCopy.label}</p>
-                <p className="mt-2 text-sm text-[#5d675c]">{activeRoleCopy.description}</p>
-              </div>
-            </div>
-          </section>
-
           <section id="dashboard" className="grid gap-4 lg:grid-cols-4">
             <MetricCard
               icon={<ClipboardList size={20} aria-hidden />}
@@ -1183,38 +1485,7 @@ export function SovereignSourceApp() {
             />
           </section>
 
-          <section id="demo-guide" className="rounded-lg border border-[#d9ded4] bg-white">
-            <SectionHeader
-              icon={<PlayCircle size={18} aria-hidden />}
-              title="Controlled Titanium Bracket Walkthrough"
-              action={
-                <CommandButton label="Start Walkthrough" onClick={startControlledWalkthrough}>
-                  <PlayCircle size={16} aria-hidden />
-                </CommandButton>
-              }
-            />
-            <div className="grid gap-3 p-4 lg:grid-cols-3">
-              {walkthroughSteps.map((step, index) => (
-                <button
-                  key={step.title}
-                  className="rounded-lg border border-[#dfe5da] bg-[#fbfcf8] p-3 text-left hover:border-[#9aa899]"
-                  onClick={() => jumpToDemoTarget(step.target, step.role)}
-                  type="button"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="grid size-8 place-items-center rounded-md bg-[#263f38] text-sm font-semibold text-white">
-                      {index + 1}
-                    </span>
-                    <StatusBadge tone="neutral" label={step.role.toLowerCase()} />
-                  </div>
-                  <p className="mt-3 font-medium">{step.title}</p>
-                  <p className="mt-2 text-sm text-[#667064]">{step.detail}</p>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section id="suppliers" className="rounded-lg border border-[#d9ded4] bg-white">
+          <section id="suppliers" className="hidden">
             <SectionHeader
               icon={<Factory size={18} aria-hidden />}
               title="Supplier Directory"
@@ -1340,7 +1611,10 @@ export function SovereignSourceApp() {
             </div>
           </section>
 
-          <section id="evidence" className="rounded-lg border border-[#d9ded4] bg-white">
+          <section
+            id="evidence"
+            className={activeTab === "review" ? "rounded-lg border border-[#d9ded4] bg-white" : "hidden"}
+          >
             <SectionHeader icon={<BadgeCheck size={18} aria-hidden />} title="Evidence Review Queue" />
             <div className="grid gap-3 p-4">
               {reviewQueue.map((evidence) => (
@@ -1385,7 +1659,10 @@ export function SovereignSourceApp() {
             </div>
           </section>
 
-          <section id="work-packages" className="rounded-lg border border-[#d9ded4] bg-white">
+          <section
+            id="work-packages"
+            className={activeTab === "review" ? "rounded-lg border border-[#d9ded4] bg-white" : "hidden"}
+          >
             <SectionHeader icon={<PackagePlus size={18} aria-hidden />} title="Work Package Builder" />
             <div className="grid gap-5 p-4 xl:grid-cols-[minmax(0,1fr)_440px]">
               <div className="grid gap-3">
@@ -1523,7 +1800,10 @@ export function SovereignSourceApp() {
             </div>
           </section>
 
-          <section id="matching" className="rounded-lg border border-[#d9ded4] bg-white">
+          <section
+            id="matching"
+            className={activeTab === "qualification" ? "rounded-lg border border-[#d9ded4] bg-white" : "hidden"}
+          >
             <SectionHeader
               icon={<Search size={18} aria-hidden />}
               title="Matching Results"
@@ -1551,52 +1831,72 @@ export function SovereignSourceApp() {
                 ))}
               </div>
 
-              <div className="grid gap-3">
-                {filteredMatches.map((match) => (
-                  <div
-                    key={match.id}
-                    className="grid gap-3 rounded-lg border border-[#dfe5da] bg-[#fbfcf8] p-3 lg:grid-cols-[minmax(0,1fr)_140px]"
-                  >
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium">{organizationName(data, match.supplierOrgId)}</p>
-                        <StatusBadge tone={statusTone[match.eligibilityStatus]} label={match.eligibilityStatus.replaceAll("_", " ").toLowerCase()} />
-                        <span className="text-sm text-[#667064]">{facilityName(data, match.facilityId)}</span>
-                      </div>
-                      <div className="mt-3 grid gap-2 md:grid-cols-2">
-                        <ReasonList title="Reasons" items={match.reasons} tone="good" />
-                        <ReasonList title="Blockers" items={match.blockers} tone="bad" />
-                      </div>
-                      <ReasonList title="Capacity Confidence Signals" items={match.capacitySignals} tone="neutral" />
-                    </div>
-                    <div className="flex items-start justify-between gap-3 lg:block">
-                      <div>
-                        <p className="text-3xl font-semibold">{match.score}</p>
-                        <p className="text-xs text-[#667064]">match score</p>
-                      </div>
-                      <label className="mt-3 flex items-center gap-2 text-sm">
-                        <input
-                          checked={selectedInviteSuppliers.includes(match.supplierOrgId)}
-                          disabled={match.eligibilityStatus !== "ELIGIBLE"}
-                          onChange={(event) => {
-                            setSelectedInviteSuppliers((current) =>
-                              event.target.checked
-                                ? [...new Set([...current, match.supplierOrgId])]
-                                : current.filter((id) => id !== match.supplierOrgId),
-                            );
-                          }}
-                          type="checkbox"
-                        />
-                        Select
-                      </label>
-                    </div>
-                  </div>
-                ))}
+              <div className="overflow-x-auto rounded-lg border border-[#dfe5da]">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-[#fbfcf8] text-[#687167]">
+                    <tr className="border-b border-[#dfe5da]">
+                      <th className="py-2 pr-4 pl-3 font-medium">Supplier</th>
+                      <th className="py-2 pr-4 font-medium">Capability</th>
+                      <th className="py-2 pr-4 font-medium">Evidence / Access</th>
+                      <th className="py-2 pr-4 font-medium">Score</th>
+                      <th className="py-2 pr-3 font-medium">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredMatches.map((match) => (
+                      <tr key={match.id} className="border-b border-[#edf0ea] last:border-0">
+                        <td className="py-3 pr-4 pl-3 align-top">
+                          <p className="font-medium">{organizationName(data, match.supplierOrgId)}</p>
+                          <p className="mt-1 text-xs text-[#667064]">{facilityName(data, match.facilityId)}</p>
+                        </td>
+                        <td className="max-w-[340px] py-3 pr-4 align-top">
+                          <p>{match.reasons[0] ?? "Facility capability reviewed."}</p>
+                          <p className="mt-1 text-xs text-[#667064]">
+                            {match.capacitySignals[0] ?? leadTimeEstimate(match.supplierOrgId)}
+                          </p>
+                        </td>
+                        <td className="max-w-[360px] py-3 pr-4 align-top">
+                          <StatusBadge
+                            tone={statusTone[match.eligibilityStatus]}
+                            label={match.eligibilityStatus.replaceAll("_", " ").toLowerCase()}
+                          />
+                          <p className="mt-2 text-xs text-[#667064]">
+                            {match.blockers[0] ??
+                              (match.eligibilityStatus === "ELIGIBLE"
+                                ? "Evidence valid for controlled RFQ routing."
+                                : "Manual review required before release.")}
+                          </p>
+                        </td>
+                        <td className="py-3 pr-4 align-top text-2xl font-semibold">{match.score}</td>
+                        <td className="py-3 pr-3 align-top">
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              checked={selectedInviteSuppliers.includes(match.supplierOrgId)}
+                              disabled={match.eligibilityStatus !== "ELIGIBLE"}
+                              onChange={(event) => {
+                                setSelectedInviteSuppliers((current) =>
+                                  event.target.checked
+                                    ? [...new Set([...current, match.supplierOrgId])]
+                                    : current.filter((id) => id !== match.supplierOrgId),
+                                );
+                              }}
+                              type="checkbox"
+                            />
+                            Select
+                          </label>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           </section>
 
-          <section id="dispatch" className="rounded-lg border border-[#d9ded4] bg-white">
+          <section
+            id="dispatch"
+            className={activeTab === "rfq" ? "rounded-lg border border-[#d9ded4] bg-white" : "hidden"}
+          >
             <SectionHeader
               icon={<Send size={18} aria-hidden />}
               title="RFQ Dispatch"
@@ -1631,7 +1931,10 @@ export function SovereignSourceApp() {
             </div>
           </section>
 
-          <section id="portal" className="rounded-lg border border-[#d9ded4] bg-white">
+          <section
+            id="portal"
+            className={activeTab === "rfq" ? "rounded-lg border border-[#d9ded4] bg-white" : "hidden"}
+          >
             <SectionHeader icon={<UserCheck size={18} aria-hidden />} title="Supplier RFQ Portal" />
             <div className="grid gap-4 p-4">
               <div className="rounded-lg border border-[#dfe5da] bg-[#fbfcf8] p-3 text-sm">
@@ -1675,7 +1978,10 @@ export function SovereignSourceApp() {
             </div>
           </section>
 
-          <section id="audit" className="rounded-lg border border-[#d9ded4] bg-white">
+          <section
+            id="audit"
+            className={activeTab === "audit" ? "rounded-lg border border-[#d9ded4] bg-white" : "hidden"}
+          >
             <SectionHeader
               icon={<History size={18} aria-hidden />}
               title="Audit Log"
@@ -1813,10 +2119,6 @@ function runMatchingForData(data: DemoData, workPackage: WorkPackage) {
   });
 }
 
-function scrollToSection(target: string) {
-  document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
 function SectionHeader({
   icon,
   title,
@@ -1876,38 +2178,6 @@ function EvidenceLine({ evidence }: { evidence: ComplianceEvidence }) {
     <div className="flex flex-wrap items-center gap-2">
       <span>{evidenceLabels[evidence.type]}</span>
       <StatusBadge tone={evidenceTone(evidence.status)} label={evidence.status.replaceAll("_", " ").toLowerCase()} />
-    </div>
-  );
-}
-
-function ReasonList({
-  title,
-  items,
-  tone,
-}: {
-  title: string;
-  items: string[];
-  tone: "good" | "bad" | "neutral";
-}) {
-  if (items.length === 0) {
-    return (
-      <div className="text-sm text-[#667064]">
-        <p className="font-medium text-[#1f261f]">{title}</p>
-        <p>None</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="text-sm">
-      <p className="font-medium text-[#1f261f]">{title}</p>
-      <ul className="mt-1 grid gap-1">
-        {items.map((item) => (
-          <li key={item} className={tone === "bad" ? "text-[#8a2f25]" : tone === "good" ? "text-[#315c4a]" : "text-[#667064]"}>
-            {item}
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

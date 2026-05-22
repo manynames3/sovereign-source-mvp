@@ -147,6 +147,38 @@ export function evaluateDataRoomAccess(input: {
   };
 }
 
+export function evaluateEvidenceExpiration(
+  evidence: ComplianceEvidence,
+  now = new Date(),
+  warningWindowDays = 30,
+) {
+  if (!evidence.expirationDate || evidence.status === "REJECTED") {
+    return undefined;
+  }
+
+  const expirationTime = new Date(evidence.expirationDate).getTime();
+  if (Number.isNaN(expirationTime)) {
+    return undefined;
+  }
+
+  if (expirationTime <= now.getTime() && evidence.status !== "EXPIRED") {
+    return {
+      status: "EXPIRED" as const,
+      reason: "Access suspended because evidence expired.",
+    };
+  }
+
+  const warningTime = now.getTime() + warningWindowDays * 24 * 60 * 60 * 1000;
+  if (expirationTime <= warningTime && evidence.status === "VALID") {
+    return {
+      status: "EXPIRES_SOON" as const,
+      reason: "Evidence expiration warning generated.",
+    };
+  }
+
+  return undefined;
+}
+
 export function requiredEvidenceMissingOrInvalid(input: {
   workPackage: WorkPackage;
   evidence: ComplianceEvidence[];

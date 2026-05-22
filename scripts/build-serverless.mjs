@@ -8,8 +8,8 @@ await build({
   bundle: true,
   platform: "node",
   target: "node20",
-  format: "esm",
-  outfile: "infra/aws/dist/index.mjs",
+  format: "cjs",
+  outfile: "infra/aws/dist/index.js",
   sourcemap: false,
   minify: false,
 });

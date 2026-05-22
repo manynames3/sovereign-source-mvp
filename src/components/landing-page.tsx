@@ -6,13 +6,13 @@ import {
   ClipboardCheck,
   FileLock2,
   FileText,
-  LockKeyhole,
   RadioTower,
   Route,
   SearchCheck,
   ShieldCheck,
   UploadCloud,
 } from "lucide-react";
+import { CognitoSignInButton } from "@/components/cognito-sign-in-button";
 import type { CognitoLogin } from "@/lib/cognito";
 
 type LandingPageProps = {
@@ -20,15 +20,24 @@ type LandingPageProps = {
 };
 
 const painPoints = [
-  "RFQs are sent to stale or unqualified suppliers before evidence is checked.",
-  "Controlled drawings move through email, folders, and tribal knowledge.",
-  "Buyers cannot quickly explain who saw what, when, and why.",
+  "Is this supplier actually capable at the facility level?",
+  "Is the required evidence current?",
+  "Who saw the drawing, when, and why?",
 ];
 
-const outcomes = [
-  "Upload drawings, PO lines, or BOMs into one sourcing intake.",
-  "Route work only after capability, facility, and evidence gates are clear.",
-  "Keep manual review visible when CMMC, ITAR evidence, or scope is uncertain.",
+const benefits = [
+  {
+    title: "Qualify suppliers before releasing files",
+    detail: "Route RFQs based on facility capability, evidence status, and review requirements.",
+  },
+  {
+    title: "Reduce wasted RFQs",
+    detail: "Avoid sending controlled work to suppliers that are expired, mismatched, or missing required documentation.",
+  },
+  {
+    title: "Keep an audit-ready access trail",
+    detail: "Track who saw what, when, and why across RFQ invites, data-room access, and supplier responses.",
+  },
 ];
 
 const workflow = [
@@ -56,10 +65,44 @@ const workflow = [
 
 const trustSignals = [
   "Deterministic match reasons",
-  "Manual review required states",
-  "Access suspended states",
-  "Server-side pilot API path",
-  "No platform compliance certification claim",
+  "Evidence expiration warnings",
+  "Manual review workflow",
+  "Server-side audit log path",
+  "Signed document access path",
+  "No compliance certification claim",
+];
+
+const faqs = [
+  {
+    question: "Does Sovereign Source certify supplier compliance?",
+    answer:
+      "No. The platform helps buyers organize evidence, review status, and access decisions. Final supplier and compliance decisions stay with the buyer.",
+  },
+  {
+    question: "Is this a supplier marketplace?",
+    answer:
+      "No. The pilot workflow is focused on controlled RFQ intake, evidence-gated routing, data-room access, and audit records.",
+  },
+  {
+    question: "What happens when supplier evidence expires?",
+    answer:
+      "The workflow can show access suspended, route the package to manual review, and preserve the reason in the audit trail.",
+  },
+  {
+    question: "Can suppliers receive files through email?",
+    answer:
+      "The intended workflow uses secure data-room access instead of uncontrolled file attachments.",
+  },
+  {
+    question: "Is the instant match result final?",
+    answer:
+      "No. Sensitive or uncertain packages can require manual review before RFQ release.",
+  },
+  {
+    question: "Who is this for?",
+    answer:
+      "Defense, aerospace, naval, and advanced manufacturing buyers sourcing controlled or sensitive metal-part work.",
+  },
 ];
 
 export function LandingPage({ cognitoLogin }: LandingPageProps) {
@@ -92,13 +135,7 @@ export function LandingPage({ cognitoLogin }: LandingPageProps) {
             <Link className="text-[#c9d2ca] hover:text-white" href="/dashboard?auth=demo">
               Dashboard
             </Link>
-            <a
-              className="inline-flex items-center gap-2 rounded-md border border-[#f2c86b]/70 bg-[#f2c86b] px-3 py-2 font-medium text-[#12110c] hover:bg-[#ffd77a]"
-              href={cognitoLogin.href}
-            >
-              Sign in
-              <ArrowRight size={15} aria-hidden />
-            </a>
+            <CognitoSignInButton />
           </div>
         </nav>
 
@@ -111,27 +148,29 @@ export function LandingPage({ cognitoLogin }: LandingPageProps) {
                 <span>Curated network + software layer</span>
               </div>
               <h1 className="max-w-5xl text-5xl font-semibold leading-[0.98] tracking-normal text-white sm:text-6xl lg:text-7xl">
-                Stop releasing controlled RFQs to suppliers you cannot defend.
+                Stop Sending Controlled RFQs Into the Dark.
               </h1>
               <p className="mt-6 max-w-3xl text-lg leading-8 text-[#c8d1ca]">
-                Sovereign Source helps aerospace, naval, and defense buyers upload a drawing or PO,
-                qualify suppliers by facility and evidence, and route controlled packages through a
-                secure RFQ workflow.
+                Sovereign Source helps defense, aerospace, and naval buyers qualify supplier
+                capability and evidence before releasing sensitive RFQ packages.
+              </p>
+              <p className="mt-4 max-w-3xl text-sm leading-6 text-[#f2d88d]">
+                If you cannot explain who saw the drawing, when, and why, you have a sourcing
+                control problem.
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <a
-                  className="inline-flex items-center justify-center gap-2 rounded-md bg-[#e8f6df] px-5 py-3 text-sm font-semibold text-[#102017] hover:bg-white"
-                  href={cognitoLogin.href}
-                >
-                  Sign in with Cognito
-                  <LockKeyhole size={16} aria-hidden />
-                </a>
                 <Link
-                  className="inline-flex items-center justify-center gap-2 rounded-md border border-white/20 px-5 py-3 text-sm font-semibold text-white hover:bg-white/10"
+                  className="inline-flex items-center justify-center gap-2 rounded-md bg-[#e8f6df] px-5 py-3 text-sm font-semibold text-[#102017] hover:bg-white"
                   href="/request-access"
                 >
                   Request pilot access
                   <ArrowRight size={16} aria-hidden />
+                </Link>
+                <Link
+                  className="inline-flex items-center justify-center gap-2 rounded-md border border-white/20 px-5 py-3 text-sm font-semibold text-white hover:bg-white/10"
+                  href="/dashboard?auth=demo"
+                >
+                  View demo dashboard
                 </Link>
               </div>
               <p className="mt-3 text-sm text-[#91a097]">
@@ -180,8 +219,12 @@ export function LandingPage({ cognitoLogin }: LandingPageProps) {
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#6f5a17]">The painful gap</p>
             <h2 className="mt-3 text-3xl font-semibold sm:text-4xl">
-              Manual sourcing breaks exactly where controlled manufacturing gets risky.
+              Controlled sourcing still runs through email, spreadsheets, and stale supplier lists.
             </h2>
+            <p className="mt-4 text-sm leading-6 text-[#5e665d]">
+              One bad RFQ release creates more than wasted time. It creates review burden, audit
+              exposure, supplier confusion, and risk around controlled technical data.
+            </p>
           </div>
           <div className="grid gap-3">
             {painPoints.map((item) => (
@@ -200,11 +243,11 @@ export function LandingPage({ cognitoLogin }: LandingPageProps) {
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#315c4a]">How it works</p>
               <h2 className="mt-3 text-3xl font-semibold sm:text-4xl">
-                Instant intake, curated qualification, built for controlled RFQs.
+                Sovereign Source gives buyers an evidence-gated RFQ workflow.
               </h2>
               <p className="mt-4 text-sm leading-6 text-[#5e665d]">
-                The product promise is not autonomous compliance. It is faster sourcing with visible
-                evidence gates, human review, and controlled file routing.
+                Upload a drawing, PO, or work package. Review supplier capability and evidence.
+                Release controlled RFQs only when access rules are clear, reviewed, and logged.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -227,14 +270,21 @@ export function LandingPage({ cognitoLogin }: LandingPageProps) {
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#f2c86b]">The outcome</p>
             <h2 className="mt-3 text-3xl font-semibold sm:text-4xl">
-              Procurement can move faster without pretending risk went away.
+              Three ways buyers get control before files move.
             </h2>
+            <p className="mt-4 text-sm leading-6 text-[#c8d1ca]">
+              Generic procurement tools do not understand evidence gates, manual review states, or
+              secure data-room access.
+            </p>
           </div>
           <div className="grid gap-3">
-            {outcomes.map((item) => (
-              <div key={item} className="flex gap-3 rounded-lg border border-white/10 bg-white/5 p-4">
+            {benefits.map((item) => (
+              <div key={item.title} className="flex gap-3 rounded-lg border border-white/10 bg-white/5 p-4">
                 <CheckCircle2 className="mt-0.5 shrink-0 text-[#aee1b8]" size={18} aria-hidden />
-                <p className="text-sm leading-6 text-[#d3ddd5]">{item}</p>
+                <div>
+                  <h3 className="font-semibold text-white">{item.title}</h3>
+                  <p className="mt-1 text-sm leading-6 text-[#d3ddd5]">{item.detail}</p>
+                </div>
               </div>
             ))}
           </div>
@@ -270,28 +320,42 @@ export function LandingPage({ cognitoLogin }: LandingPageProps) {
         </div>
       </section>
 
+      <section className="border-t border-[#d8ddd2] bg-white text-[#1b1f1c]">
+        <div className="mx-auto grid w-full max-w-7xl gap-8 px-5 py-16 sm:px-8 lg:grid-cols-[0.8fr_1.2fr] lg:py-20">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#315c4a]">FAQ</p>
+            <h2 className="mt-3 text-3xl font-semibold sm:text-4xl">Clear boundaries for a controlled pilot.</h2>
+          </div>
+          <div className="grid gap-3">
+            {faqs.map((faq) => (
+              <div key={faq.question} className="rounded-lg border border-[#d9ded4] bg-[#fbfcf8] p-4">
+                <h3 className="font-semibold">{faq.question}</h3>
+                <p className="mt-2 text-sm leading-6 text-[#5e665d]">{faq.answer}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section className="border-t border-white/10 bg-[#080b0a] text-[#f6f2e8]">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-5 py-14 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#f2c86b]">Pilot-ready workflow</p>
-            <h2 className="mt-2 text-3xl font-semibold">Bring discipline to your next controlled RFQ.</h2>
+            <h2 className="mt-2 text-3xl font-semibold">
+              Build a safer RFQ release process before the next controlled package.
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-[#c8d1ca]">
+              Start with a reviewed pilot around supplier evidence, controlled RFQ routing, and
+              audit-ready data-room access.
+            </p>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <a
-              className="inline-flex items-center justify-center gap-2 rounded-md bg-[#e8f6df] px-5 py-3 text-sm font-semibold text-[#102017] hover:bg-white"
-              href={cognitoLogin.href}
-            >
-              Sign in with Cognito
-              <LockKeyhole size={16} aria-hidden />
-            </a>
-            <Link
-              className="inline-flex items-center justify-center gap-2 rounded-md border border-white/20 px-5 py-3 text-sm font-semibold text-white hover:bg-white/10"
-              href="/request-access"
-            >
-              Request pilot access
-              <RadioTower size={16} aria-hidden />
-            </Link>
-          </div>
+          <Link
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-[#e8f6df] px-5 py-3 text-sm font-semibold text-[#102017] hover:bg-white"
+            href="/request-access"
+          >
+            Request pilot access
+            <RadioTower size={16} aria-hidden />
+          </Link>
         </div>
       </section>
     </main>

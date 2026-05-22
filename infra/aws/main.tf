@@ -184,7 +184,7 @@ resource "aws_cognito_user_pool_client" "web" {
   allowed_oauth_scopes                 = ["email", "openid", "profile"]
   callback_urls                        = local.callback_urls
   logout_urls                          = local.logout_urls
-  explicit_auth_flows                  = ["ALLOW_REFRESH_TOKEN_AUTH", "ALLOW_USER_SRP_AUTH"]
+  explicit_auth_flows                  = ["ALLOW_REFRESH_TOKEN_AUTH", "ALLOW_ADMIN_USER_PASSWORD_AUTH", "ALLOW_USER_SRP_AUTH"]
   access_token_validity                = 60
   id_token_validity                    = 60
   refresh_token_validity               = 7
@@ -245,7 +245,8 @@ resource "aws_iam_role_policy" "api" {
           "dynamodb:BatchWriteItem",
           "dynamodb:GetItem",
           "dynamodb:PutItem",
-          "dynamodb:Query"
+          "dynamodb:Query",
+          "dynamodb:Scan"
         ]
         Resource = [
           aws_dynamodb_table.pilot.arn,
@@ -277,7 +278,7 @@ resource "aws_cloudwatch_log_group" "api" {
 
 data "archive_file" "api" {
   type        = "zip"
-  source_file = "${path.module}/dist/index.mjs"
+  source_file = "${path.module}/dist/index.js"
   output_path = "${path.module}/dist/sovereign-api.zip"
 }
 
@@ -318,14 +319,32 @@ resource "aws_lambda_function" "api" {
 resource "aws_lambda_function_url" "api" {
   function_name      = aws_lambda_function.api.function_name
   authorization_type = "NONE"
+}
 
-  cors {
-    allow_credentials = false
-    allow_headers     = ["authorization", "content-type"]
-    allow_methods     = ["GET", "POST", "PATCH", "OPTIONS"]
-    allow_origins     = local.allowed_origins
-    max_age           = 86400
+resource "aws_cloudwatch_event_rule" "evidence_expiration" {
+  name                = "${local.name_prefix}-evidence-expiration"
+  description         = "Runs daily evidence-expiration status updates."
+  schedule_expression = "rate(1 day)"
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+    CostModel   = "daily-scheduled-lambda"
   }
+}
+
+resource "aws_cloudwatch_event_target" "evidence_expiration" {
+  rule      = aws_cloudwatch_event_rule.evidence_expiration.name
+  target_id = "${local.name_prefix}-evidence-expiration"
+  arn       = aws_lambda_function.api.arn
+}
+
+resource "aws_lambda_permission" "allow_evidence_expiration" {
+  statement_id  = "AllowEvidenceExpirationSchedule"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.api.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.evidence_expiration.arn
 }
 
 resource "aws_budgets_budget" "monthly" {

@@ -6,6 +6,7 @@ This Terraform stack creates the paid-pilot backend without always-on compute:
 - DynamoDB on-demand single table with tenant-scoped records.
 - Private S3 document bucket with signed URL access only.
 - Lambda Function URL API with server-side JWT validation.
+- Daily EventBridge rule that invokes Lambda to update expired or expiring evidence status.
 - Short-retention CloudWatch logs.
 - Optional AWS Budget alert.
 
@@ -72,7 +73,14 @@ Public:
 Authenticated:
 
 - `GET /me`
+- `GET /dashboard/state`
 - `POST /admin/demo-seed`
+- `GET /admin/buyer-orgs`
+- `POST /admin/buyer-orgs`
+- `GET /admin/users`
+- `POST /admin/users`
+- `POST /admin/suppliers/onboard`
+- `POST /admin/evidence/expire-stale`
 - `GET /suppliers`
 - `POST /suppliers`
 - `GET /evidence`
@@ -94,4 +102,18 @@ Authenticated:
 - Lambda Function URL avoids API Gateway and has no always-on compute.
 - S3 is private and usage-based.
 - CloudWatch log retention defaults to 7 days.
+- Evidence expiration automation runs once daily, so idle cost is one scheduled Lambda invocation per day.
 - The optional budget creates 50% actual and 100% forecasted alerts against the configured monthly amount.
+
+## Current Pilot Outputs
+
+The applied `pilot` stack in `us-east-1` currently exposes:
+
+- API base URL: `https://mybadbyjftp6piacpjbfzwz6ce0fxnhc.lambda-url.us-east-1.on.aws/`
+- Cognito domain: `https://sovereign-source-pilot-a8152c9f.auth.us-east-1.amazoncognito.com`
+- Cognito app client id: `7l1ft4vp054o66vq6rbu1k5t51`
+- Cognito user pool id: `us-east-1_W66KkDmzs`
+- DynamoDB table: `sovereign-source-pilot-data`
+- S3 document bucket: `sovereign-source-pilot-documents-636305658578-a8152c9f`
+
+These identifiers are public/non-secret configuration. Do not commit pilot user passwords or AWS credentials.

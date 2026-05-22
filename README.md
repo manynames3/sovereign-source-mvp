@@ -347,6 +347,19 @@ terraform plan -var='budget_alert_email=you@example.com'
 
 The serverless API adds production-shaped endpoints for Cognito JWT validation, tenant-scoped DynamoDB records, server-side matching, signed S3 document URLs, expiring/revocable RFQ invite tokens, supplier quote/decline/no-bid responses, and server-side audit export.
 
+The deployed low-idle pilot stack now includes Cognito, DynamoDB on-demand, private S3 signed uploads/downloads, Lambda Function URL API, short-retention CloudWatch logs, and a daily evidence-expiration EventBridge rule. Local frontend development is wired through `.env` to:
+
+- API: `https://mybadbyjftp6piacpjbfzwz6ce0fxnhc.lambda-url.us-east-1.on.aws/`
+- Cognito domain: `https://sovereign-source-pilot-a8152c9f.auth.us-east-1.amazoncognito.com`
+- Cognito app client: `7l1ft4vp054o66vq6rbu1k5t51`
+
+The dashboard uses Cognito sessions for `/dashboard`, loads tenant state from `/dashboard/state`, writes uploads through signed S3 URLs, and persists matching, classification, evidence review, RFQ invite, supplier response, revocation, and audit actions server-side.
+
+Additional production-readiness notes:
+
+- `docs/production-security.md` lists only controls that are currently implemented or explicitly still required.
+- `docs/pilot-case-study-requirements.md` defines what must be measured before publishing a real pilot case study.
+
 ## Demo Flow
 
 1. Open the logged-in Upload Request workspace.

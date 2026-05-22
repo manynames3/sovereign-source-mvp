@@ -55,7 +55,7 @@ The main cost traps are not user sign-in or a few RFQs. The cost traps are alway
 
 ## Current Repo Coverage
 
-Implemented in code:
+Implemented and deployed for the low-idle pilot stack:
 
 - Cognito Hosted UI URL builder and honest demo fallback.
 - Public request-access page and FastAPI `/access/request` capture endpoint.
@@ -64,15 +64,19 @@ Implemented in code:
 - Public trust page that avoids compliance certification claims.
 - Terraform for Cognito, DynamoDB on-demand, S3 signed document storage, Lambda Function URL, IAM, short-retention logs, and optional AWS Budget alerts.
 - Lambda Function URL API with Cognito JWT validation, role checks, tenant-scoped DynamoDB records, server-side matching, evidence review, work package classification approval, signed upload/download URLs, expiring/revocable invite tokens, supplier responses, and audit export.
+- Frontend dashboard wiring for Cognito sessions, `/dashboard/state`, signed document upload URLs, server-side matching, classification approval, evidence review, RFQ creation, invite release, invite revocation, supplier quote/decline/no-bid responses, and persisted audit state.
+- Admin-shaped API endpoints for buyer org records, application user profiles, supplier onboarding, and manual evidence-expiration refresh.
+- Daily EventBridge evidence-expiration job that updates expired/expiring evidence and writes audit entries.
 
 Still not finished for a 10/10 paid pilot:
 
-- Apply Terraform and configure Cloudflare Pages environment variables from Terraform outputs.
-- Create Cognito users with `custom:tenant_id` and role-group membership.
-- Replace the demo dashboard's client-side seed data with calls to the serverless API.
+- Configure Cloudflare Pages production environment variables from Terraform outputs and redeploy the frontend.
+- Replace the temporary all-role pilot Cognito user with role-specific buyer, reviewer, supplier, and platform users.
 - Add a real admin UI over the new API for tenant/user/supplier/evidence management.
-- Add a proper OAuth callback/token handling flow or Cloudflare middleware so `/dashboard` is not just a demo route.
+- Add Cognito user creation/invite workflows from the admin UI, or document the admin-only user provisioning runbook.
+- Add Cloudflare/edge middleware or server-side checks if the production dashboard should be blocked before any client code loads.
 - CRM integration or notification workflow for access requests.
+- Complete a real pilot case study from an actual buyer workflow; do not publish fabricated testimonials, logos, or ROI claims.
 
 ## Official Pricing References Checked
 
