@@ -1,16 +1,17 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  BadgeCheck,
   CheckCircle2,
   ClipboardCheck,
   FileLock2,
   FileText,
+  LockKeyhole,
   RadioTower,
   Route,
   SearchCheck,
   ShieldCheck,
   UploadCloud,
+  UsersRound,
 } from "lucide-react";
 import { CognitoSignInButton } from "@/components/cognito-sign-in-button";
 import type { CognitoLogin } from "@/lib/cognito";
@@ -19,57 +20,55 @@ type LandingPageProps = {
   cognitoLogin: CognitoLogin;
 };
 
-const painPoints = [
-  "Is this supplier actually capable at the facility level?",
-  "Is the required evidence current?",
-  "Who saw the drawing, when, and why?",
-];
-
-const benefits = [
-  {
-    title: "Qualify suppliers before releasing files",
-    detail: "Route RFQs based on facility capability, evidence status, and review requirements.",
-  },
-  {
-    title: "Reduce wasted RFQs",
-    detail: "Avoid sending controlled work to suppliers that are expired, mismatched, or missing required documentation.",
-  },
-  {
-    title: "Keep an audit-ready access trail",
-    detail: "Track who saw what, when, and why across RFQ invites, data-room access, and supplier responses.",
-  },
-];
-
 const workflow = [
   {
-    title: "Intake",
-    detail: "Parse drawings, models, PO lines, process needs, quantities, and control markers.",
+    title: "Intake package",
+    detail: "Drawing, model, PO, BOM, and flowdown files stay attached to one source request.",
     Icon: UploadCloud,
   },
   {
-    title: "Curate",
-    detail: "Tie supplier fit to facility-level capability, reviewed evidence, and quality documents.",
+    title: "Review evidence",
+    detail: "Facility capability, evidence status, expiration, and manual review states are visible before release.",
     Icon: ClipboardCheck,
   },
   {
-    title: "Route",
-    detail: "Release secure RFQ invites only when evidence is valid or an exception is approved.",
+    title: "Route RFQ",
+    detail: "Controlled RFQs move through buyer-defined access gates instead of uncontrolled attachments.",
     Icon: Route,
   },
   {
-    title: "Audit",
-    detail: "Export the access trail for buyer review: who saw what, when, and why.",
+    title: "Export audit",
+    detail: "Buyer teams can export who saw what, when, and why across the data-room workflow.",
     Icon: FileText,
   },
 ];
 
-const trustSignals = [
+const pilotCards = [
+  {
+    name: "Source Request",
+    detail: "Upload a controlled package and detect package requirements.",
+    price: "Intake",
+  },
+  {
+    name: "Evidence Gate",
+    detail: "Review supplier evidence, expiration, facility fit, and exceptions.",
+    price: "Review",
+    featured: true,
+  },
+  {
+    name: "RFQ Release",
+    detail: "Invite only approved suppliers and preserve audit records.",
+    price: "Route",
+  },
+];
+
+const proofSignals = [
   "Deterministic match reasons",
   "Evidence expiration warnings",
   "Manual review workflow",
   "Server-side audit log path",
   "Signed document access path",
-  "No compliance certification claim",
+  "No platform compliance certification claim",
 ];
 
 const faqs = [
@@ -90,13 +89,11 @@ const faqs = [
   },
   {
     question: "Can suppliers receive files through email?",
-    answer:
-      "The intended workflow uses secure data-room access instead of uncontrolled file attachments.",
+    answer: "The intended workflow uses secure data-room access instead of uncontrolled file attachments.",
   },
   {
     question: "Is the instant match result final?",
-    answer:
-      "No. Sensitive or uncertain packages can require manual review before RFQ release.",
+    answer: "No. Sensitive or uncertain packages can require manual review before RFQ release.",
   },
   {
     question: "Who is this for?",
@@ -107,250 +104,262 @@ const faqs = [
 
 export function LandingPage({ cognitoLogin }: LandingPageProps) {
   return (
-    <main className="min-h-screen bg-[#080b0a] text-[#f6f2e8]">
-      <section className="relative isolate overflow-hidden border-b border-white/10">
-        <div className="absolute inset-0 -z-10 opacity-30">
-          <div className="absolute inset-x-0 top-0 h-px bg-[#f2c86b]" />
-          <div className="grid h-full grid-cols-6">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className="border-r border-white/5" />
-            ))}
-          </div>
-        </div>
-
+    <main className="min-h-screen bg-white text-[#0b1220]">
+      <section className="relative isolate overflow-hidden bg-[#043873] text-white">
+        <HeroBackground />
         <nav className="mx-auto flex w-full max-w-7xl items-center justify-between px-5 py-5 sm:px-8">
           <Link className="flex items-center gap-3" href="/">
-            <span className="grid size-9 place-items-center rounded-md border border-[#416a5a] bg-[#10251d] text-[#dff3e4]">
-              <ShieldCheck size={19} aria-hidden />
+            <span className="grid size-10 place-items-center rounded-md bg-white text-[#043873]">
+              <ShieldCheck size={20} aria-hidden />
             </span>
-            <span className="font-semibold tracking-[0.02em]">Sovereign Source</span>
+            <span className="text-lg font-semibold tracking-[0.01em]">Sovereign Source</span>
           </Link>
-          <div className="flex items-center gap-2 text-sm">
-            <Link className="hidden text-[#c9d2ca] hover:text-white sm:inline" href="#workflow">
+          <div className="hidden items-center gap-8 text-sm text-white/78 md:flex">
+            <Link className="hover:text-white" href="#workflow">
               Workflow
             </Link>
-            <Link className="hidden text-[#c9d2ca] hover:text-white sm:inline" href="/trust">
+            <Link className="hover:text-white" href="#pilot">
+              Pilot
+            </Link>
+            <Link className="hover:text-white" href="/trust">
               Trust
             </Link>
-            <Link className="text-[#c9d2ca] hover:text-white" href="/dashboard?auth=demo">
+          </div>
+          <div className="flex items-center gap-2">
+            <Link
+              className="hidden rounded-md border border-white/20 px-3 py-2 text-sm font-medium text-white hover:bg-white/10 sm:inline-flex"
+              href="/dashboard?auth=demo"
+            >
               Dashboard
             </Link>
             <CognitoSignInButton />
           </div>
         </nav>
 
-        <div className="mx-auto grid min-h-[720px] w-full max-w-7xl content-end px-5 pb-8 pt-16 sm:px-8 lg:min-h-[760px]">
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_430px] lg:items-end">
-            <div className="max-w-4xl pb-4">
-              <div className="mb-6 flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-[#d7c184]">
-                <span>Defense-qualified sourcing</span>
-                <span className="h-px w-8 bg-[#d7c184]" />
-                <span>Curated network + software layer</span>
+        <div className="mx-auto grid w-full max-w-7xl gap-12 px-5 pb-20 pt-14 sm:px-8 lg:grid-cols-[minmax(0,0.88fr)_minmax(520px,1.12fr)] lg:items-center lg:pb-28 lg:pt-24">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-md bg-white/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#ffe492]">
+              <FileLock2 size={14} aria-hidden />
+              Controlled RFQ release
+            </div>
+            <h1 className="mt-6 max-w-4xl text-5xl font-bold leading-[1.02] tracking-normal sm:text-6xl lg:text-7xl">
+              Stop Sending Controlled RFQs Into the Dark
+            </h1>
+            <p className="mt-6 max-w-2xl text-lg leading-8 text-[#d7e8ff]">
+              Sovereign Source helps defense, aerospace, and naval buyers qualify supplier capability and evidence
+              before releasing sensitive RFQ packages.
+            </p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Link
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-[#ffe492] px-5 py-3 text-sm font-semibold text-[#043873] hover:bg-white"
+                href="/request-access"
+              >
+                Request pilot access
+                <ArrowRight size={16} aria-hidden />
+              </Link>
+              <Link
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-white/25 px-5 py-3 text-sm font-semibold text-white hover:bg-white/10"
+                href="/dashboard?auth=demo"
+              >
+                View demo dashboard
+              </Link>
+            </div>
+            <p className="mt-4 max-w-xl text-sm leading-6 text-[#b9d7fb]">
+              {cognitoLogin.isConfigured
+                ? `Cognito redirects back to ${cognitoLogin.redirectUri}.`
+                : "Cognito environment variables are not configured yet, so sign-in opens demo mode."}
+            </p>
+          </div>
+
+          <HeroIllustration />
+        </div>
+      </section>
+
+      <AlternatingSection
+        eyebrow="Project management"
+        title="One package, one reviewed release path"
+        body="Controlled sourcing still runs through email, spreadsheets, stale supplier lists, and scattered evidence folders. Sovereign Source gives the buyer one place to prepare the package before files move."
+        cta="Start pilot review"
+        href="/request-access"
+        visual={<PackageIllustration />}
+      />
+
+      <AlternatingSection
+        eyebrow="Work together"
+        title="Bring buyer, reviewer, and supplier work into one flow"
+        body="Procurement, compliance, and supplier response work should not live in separate inbox threads. The pilot workspace keeps review state, data-room access, and supplier response status connected."
+        cta="View demo dashboard"
+        href="/dashboard?auth=demo"
+        reverse
+        visual={<CollaborationIllustration />}
+      />
+
+      <section id="workflow" className="relative isolate overflow-hidden bg-[#043873] text-white">
+        <HeroBackground />
+        <div className="mx-auto grid w-full max-w-7xl gap-10 px-5 py-20 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center lg:py-24">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#ffe492]">
+              Use as controlled sourcing infrastructure
+            </p>
+            <h2 className="mt-3 max-w-xl text-4xl font-bold leading-tight sm:text-5xl">
+              Evidence gates before data-room release
+            </h2>
+            <p className="mt-5 max-w-xl text-base leading-8 text-[#d7e8ff]">
+              Upload a drawing, PO, or work package. Review supplier capability and evidence. Release controlled RFQs
+              only when access is valid, manually approved, and logged.
+            </p>
+            <Link
+              className="mt-7 inline-flex items-center justify-center gap-2 rounded-md bg-[#4f9cf9] px-5 py-3 text-sm font-semibold text-white hover:bg-[#2f7fe5]"
+              href="/request-access"
+            >
+              Request access
+              <ArrowRight size={16} aria-hidden />
+            </Link>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {workflow.map(({ title, detail, Icon }) => (
+              <div key={title} className="rounded-lg border border-white/15 bg-white/8 p-5 shadow-[0_16px_50px_rgba(0,0,0,0.16)]">
+                <span className="grid size-10 place-items-center rounded-md bg-[#4f9cf9] text-white">
+                  <Icon size={19} aria-hidden />
+                </span>
+                <h3 className="mt-5 font-semibold">{title}</h3>
+                <p className="mt-2 text-sm leading-6 text-[#d7e8ff]">{detail}</p>
               </div>
-              <h1 className="max-w-5xl text-5xl font-semibold leading-[0.98] tracking-normal text-white sm:text-6xl lg:text-7xl">
-                Stop Sending Controlled RFQs Into the Dark.
-              </h1>
-              <p className="mt-6 max-w-3xl text-lg leading-8 text-[#c8d1ca]">
-                Sovereign Source helps defense, aerospace, and naval buyers qualify supplier
-                capability and evidence before releasing sensitive RFQ packages.
-              </p>
-              <p className="mt-4 max-w-3xl text-sm leading-6 text-[#f2d88d]">
-                If you cannot explain who saw the drawing, when, and why, you have a sourcing
-                control problem.
-              </p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <AlternatingSection
+        eyebrow="Customise access to your needs"
+        title="Buyer-defined gates for sensitive packages"
+        body="Evidence valid, manual review required, and access suspended states keep the workflow honest. The platform does not certify compliance; it records evidence and routes buyer decisions."
+        cta="Read trust page"
+        href="/trust"
+        visual={<EvidenceIllustration />}
+      />
+
+      <section id="pilot" className="bg-white">
+        <div className="mx-auto w-full max-w-7xl px-5 py-20 sm:px-8 lg:py-24">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#4f9cf9]">Choose your pilot path</p>
+            <h2 className="mt-3 text-4xl font-bold leading-tight sm:text-5xl">
+              Start with the narrow workflow that proves value
+            </h2>
+            <p className="mt-5 text-base leading-8 text-[#526173]">
+              The sellable pilot should prove fewer wasted RFQs and lower data-release risk before broader supplier
+              network expansion.
+            </p>
+          </div>
+          <div className="mt-12 grid gap-5 lg:grid-cols-3">
+            {pilotCards.map((card) => (
+              <div
+                key={card.name}
+                className={`rounded-lg border p-6 ${
+                  card.featured
+                    ? "border-[#ffe492] bg-[#043873] text-white shadow-[0_24px_70px_rgba(4,56,115,0.24)]"
+                    : "border-[#dbe5f2] bg-[#f8fbff]"
+                }`}
+              >
+                <p className={card.featured ? "text-sm text-[#ffe492]" : "text-sm text-[#4f9cf9]"}>{card.price}</p>
+                <h3 className="mt-3 text-2xl font-bold">{card.name}</h3>
+                <p className={card.featured ? "mt-4 text-sm leading-6 text-[#d7e8ff]" : "mt-4 text-sm leading-6 text-[#526173]"}>
+                  {card.detail}
+                </p>
                 <Link
-                  className="inline-flex items-center justify-center gap-2 rounded-md bg-[#e8f6df] px-5 py-3 text-sm font-semibold text-[#102017] hover:bg-white"
+                  className={`mt-6 inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold ${
+                    card.featured
+                      ? "bg-[#ffe492] text-[#043873] hover:bg-white"
+                      : "bg-[#4f9cf9] text-white hover:bg-[#2f7fe5]"
+                  }`}
                   href="/request-access"
                 >
-                  Request pilot access
-                  <ArrowRight size={16} aria-hidden />
+                  Request pilot
+                  <ArrowRight size={15} aria-hidden />
                 </Link>
-                <Link
-                  className="inline-flex items-center justify-center gap-2 rounded-md border border-white/20 px-5 py-3 text-sm font-semibold text-white hover:bg-white/10"
-                  href="/dashboard?auth=demo"
-                >
-                  View demo dashboard
-                </Link>
-              </div>
-              <p className="mt-3 text-sm text-[#91a097]">
-                {cognitoLogin.isConfigured
-                  ? `Cognito redirects back to ${cognitoLogin.redirectUri}.`
-                  : "Cognito environment variables are not configured yet, so sign-in opens demo mode."}
-              </p>
-            </div>
-
-            <div className="rounded-lg border border-white/12 bg-[#0d1411]/95 p-4 shadow-2xl shadow-black/40">
-              <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-[#aeb9b1]">Live sourcing packet</p>
-                  <p className="mt-1 font-medium text-white">Controlled titanium bracket</p>
-                </div>
-                <span className="rounded-md border border-[#f2c86b]/50 bg-[#2a2310] px-2 py-1 text-xs text-[#f2d88d]">
-                  manual review
-                </span>
-              </div>
-
-              <div className="mt-4 grid gap-3">
-                <PreviewRow label="Upload" value="Drawing + PO lines loaded" tone="neutral" />
-                <PreviewRow label="Evidence" value="AS9100, ITAR evidence, JCP DD2345" tone="good" />
-                <PreviewRow label="Gate" value="CMMC Level 2 manual review required" tone="warn" />
-                <PreviewRow label="Data room" value="Access suspended until review clears" tone="bad" />
-              </div>
-
-              <div className="mt-5 rounded-lg border border-white/10 bg-[#111a16] p-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-white">Qualified shortlist</p>
-                  <span className="text-xs text-[#aeb9b1]">3 of 5 shown</span>
-                </div>
-                <div className="mt-3 grid gap-2">
-                  <SupplierRow name="Vector Aero Machining" detail="100 score · evidence valid" tone="good" />
-                  <SupplierRow name="Keystone Secure Fabrication" detail="85 score · manual review required" tone="warn" />
-                  <SupplierRow name="Talon Precision Group" detail="44 score · access suspended" tone="bad" />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="border-b border-[#d8ddd2] bg-[#f7f8f4] text-[#1b1f1c]">
-        <div className="mx-auto grid w-full max-w-7xl gap-6 px-5 py-16 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:py-20">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#6f5a17]">The painful gap</p>
-            <h2 className="mt-3 text-3xl font-semibold sm:text-4xl">
-              Controlled sourcing still runs through email, spreadsheets, and stale supplier lists.
-            </h2>
-            <p className="mt-4 text-sm leading-6 text-[#5e665d]">
-              One bad RFQ release creates more than wasted time. It creates review burden, audit
-              exposure, supplier confusion, and risk around controlled technical data.
-            </p>
-          </div>
-          <div className="grid gap-3">
-            {painPoints.map((item) => (
-              <div key={item} className="flex gap-3 rounded-lg border border-[#d9ded4] bg-white p-4">
-                <FileLock2 className="mt-0.5 shrink-0 text-[#8a2f25]" size={18} aria-hidden />
-                <p className="text-sm leading-6 text-[#4e5a51]">{item}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section id="workflow" className="bg-[#f7f8f4] text-[#1b1f1c]">
-        <div className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 lg:py-20">
-          <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#315c4a]">How it works</p>
-              <h2 className="mt-3 text-3xl font-semibold sm:text-4xl">
-                Sovereign Source gives buyers an evidence-gated RFQ workflow.
-              </h2>
-              <p className="mt-4 text-sm leading-6 text-[#5e665d]">
-                Upload a drawing, PO, or work package. Review supplier capability and evidence.
-                Release controlled RFQs only when access rules are clear, reviewed, and logged.
-              </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {workflow.map(({ title, detail, Icon }) => (
-                <div key={title} className="rounded-lg border border-[#d9ded4] bg-white p-4">
-                  <span className="grid size-9 place-items-center rounded-md bg-[#eef2ea] text-[#315c4a]">
-                    <Icon size={18} aria-hidden />
-                  </span>
-                  <h3 className="mt-4 font-semibold">{title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-[#5e665d]">{detail}</p>
-                </div>
-              ))}
-            </div>
+      <section className="relative isolate overflow-hidden bg-[#043873] text-white">
+        <HeroBackground />
+        <div className="mx-auto grid w-full max-w-7xl gap-10 px-5 py-20 text-center sm:px-8 lg:py-24">
+          <div className="mx-auto max-w-4xl">
+            <h2 className="text-4xl font-bold leading-tight sm:text-5xl">
+              Your controlled work, everywhere buyers need the record
+            </h2>
+            <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-[#d7e8ff]">
+              Keep the access story attached to the RFQ: package intake, review reasons, document access, supplier
+              response, and final export.
+            </p>
+            <Link
+              className="mt-8 inline-flex items-center justify-center gap-2 rounded-md bg-[#ffe492] px-5 py-3 text-sm font-semibold text-[#043873] hover:bg-white"
+              href="/request-access"
+            >
+              Request pilot access
+              <ArrowRight size={16} aria-hidden />
+            </Link>
           </div>
         </div>
       </section>
 
-      <section className="border-y border-white/10 bg-[#101612] text-[#eef6ee]">
-        <div className="mx-auto grid w-full max-w-7xl gap-6 px-5 py-16 sm:px-8 lg:grid-cols-[1fr_1fr] lg:py-20">
+      <section id="proof" className="bg-[#f7fbff]">
+        <div className="mx-auto grid w-full max-w-7xl gap-8 px-5 py-20 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:py-24">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#f2c86b]">The outcome</p>
-            <h2 className="mt-3 text-3xl font-semibold sm:text-4xl">
-              Three ways buyers get control before files move.
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#4f9cf9]">Product proof</p>
+            <h2 className="mt-3 max-w-xl text-4xl font-bold leading-tight sm:text-5xl">
+              Trust signals without unsupported compliance claims
             </h2>
-            <p className="mt-4 text-sm leading-6 text-[#c8d1ca]">
-              Generic procurement tools do not understand evidence gates, manual review states, or
-              secure data-room access.
+            <p className="mt-5 max-w-xl text-base leading-8 text-[#526173]">
+              The safe promise: reduce wasted controlled RFQ cycles and document why supplier access was released,
+              paused, or routed to manual review.
             </p>
           </div>
-          <div className="grid gap-3">
-            {benefits.map((item) => (
-              <div key={item.title} className="flex gap-3 rounded-lg border border-white/10 bg-white/5 p-4">
-                <CheckCircle2 className="mt-0.5 shrink-0 text-[#aee1b8]" size={18} aria-hidden />
-                <div>
-                  <h3 className="font-semibold text-white">{item.title}</h3>
-                  <p className="mt-1 text-sm leading-6 text-[#d3ddd5]">{item.detail}</p>
-                </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {proofSignals.map((signal) => (
+              <div key={signal} className="flex items-start gap-3 rounded-lg border border-[#dbe5f2] bg-white p-4">
+                <SearchCheck className="mt-0.5 shrink-0 text-[#4f9cf9]" size={18} aria-hidden />
+                <span className="text-sm font-medium leading-6">{signal}</span>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section id="proof" className="bg-[#f7f8f4] text-[#1b1f1c]">
-        <div className="mx-auto grid w-full max-w-7xl gap-8 px-5 py-16 sm:px-8 lg:grid-cols-[1.1fr_0.9fr] lg:py-20">
-          <div className="rounded-lg border border-[#d9ded4] bg-white p-5">
-            <div className="flex items-center gap-2">
-              <SearchCheck size={20} className="text-[#315c4a]" aria-hidden />
-              <h2 className="text-xl font-semibold">What the demo supports today</h2>
-            </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {trustSignals.map((signal) => (
-                <div key={signal} className="rounded-lg border border-[#dfe5da] bg-[#fbfcf8] p-3 text-sm">
-                  {signal}
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-lg border border-[#dfc47a] bg-[#fff9e7] p-5">
-            <div className="flex items-center gap-2">
-              <BadgeCheck size={20} className="text-[#7a5a11]" aria-hidden />
-              <h2 className="text-xl font-semibold">Safe promise</h2>
-            </div>
-            <p className="mt-4 text-sm leading-6 text-[#5e4d20]">
-              Reduce wasted controlled RFQ cycles and document why supplier access was released,
-              paused, or routed to manual review. The platform records evidence and enforces
-              buyer-defined gates; it does not certify supplier compliance.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="border-t border-[#d8ddd2] bg-white text-[#1b1f1c]">
-        <div className="mx-auto grid w-full max-w-7xl gap-8 px-5 py-16 sm:px-8 lg:grid-cols-[0.8fr_1.2fr] lg:py-20">
+      <section className="bg-white">
+        <div className="mx-auto grid w-full max-w-7xl gap-8 px-5 py-20 sm:px-8 lg:grid-cols-[0.8fr_1.2fr] lg:py-24">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#315c4a]">FAQ</p>
-            <h2 className="mt-3 text-3xl font-semibold sm:text-4xl">Clear boundaries for a controlled pilot.</h2>
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#4f9cf9]">FAQ</p>
+            <h2 className="mt-3 max-w-lg text-4xl font-bold leading-tight sm:text-5xl">
+              Clear boundaries for a controlled pilot
+            </h2>
           </div>
           <div className="grid gap-3">
             {faqs.map((faq) => (
-              <div key={faq.question} className="rounded-lg border border-[#d9ded4] bg-[#fbfcf8] p-4">
+              <div key={faq.question} className="rounded-lg border border-[#dbe5f2] bg-[#f8fbff] p-5">
                 <h3 className="font-semibold">{faq.question}</h3>
-                <p className="mt-2 text-sm leading-6 text-[#5e665d]">{faq.answer}</p>
+                <p className="mt-2 text-sm leading-6 text-[#526173]">{faq.answer}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="border-t border-white/10 bg-[#080b0a] text-[#f6f2e8]">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-5 py-14 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
+      <section className="bg-[#043873] text-white">
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-5 py-16 sm:px-8 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#f2c86b]">Pilot-ready workflow</p>
-            <h2 className="mt-2 text-3xl font-semibold">
-              Build a safer RFQ release process before the next controlled package.
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#ffe492]">Pilot-ready workflow</p>
+            <h2 className="mt-3 max-w-3xl text-4xl font-bold leading-tight">
+              Build a safer RFQ release process before the next controlled package
             </h2>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-[#c8d1ca]">
-              Start with a reviewed pilot around supplier evidence, controlled RFQ routing, and
-              audit-ready data-room access.
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-[#d7e8ff]">
+              Start with supplier evidence, controlled RFQ routing, and audit-ready data-room access.
             </p>
           </div>
           <Link
-            className="inline-flex items-center justify-center gap-2 rounded-md bg-[#e8f6df] px-5 py-3 text-sm font-semibold text-[#102017] hover:bg-white"
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-[#ffe492] px-5 py-3 text-sm font-semibold text-[#043873] hover:bg-white"
             href="/request-access"
           >
             Request pilot access
@@ -362,52 +371,270 @@ export function LandingPage({ cognitoLogin }: LandingPageProps) {
   );
 }
 
-function PreviewRow({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone: "good" | "warn" | "bad" | "neutral";
-}) {
-  const toneClass = {
-    good: "text-[#aee1b8]",
-    warn: "text-[#f2d88d]",
-    bad: "text-[#ffb4a8]",
-    neutral: "text-[#b6c3bb]",
-  }[tone];
-
+function HeroBackground() {
   return (
-    <div className="grid gap-1 rounded-lg border border-white/10 bg-white/5 p-3">
-      <p className="text-xs uppercase tracking-[0.16em] text-[#8f9d94]">{label}</p>
-      <p className={`text-sm ${toneClass}`}>{value}</p>
+    <div className="absolute inset-0 -z-10 overflow-hidden opacity-45">
+      <div className="absolute -left-24 top-28 h-80 w-80 rounded-full border border-white/15" />
+      <div className="absolute right-8 top-24 h-96 w-96 rounded-full border border-white/10" />
+      <div className="absolute inset-x-0 top-36 h-px bg-white/10" />
+      <div className="absolute inset-x-0 bottom-28 h-px bg-white/10" />
+      <div className="absolute left-0 top-0 h-full w-full bg-[linear-gradient(115deg,rgba(255,255,255,0.10)_0_1px,transparent_1px_72px)]" />
     </div>
   );
 }
 
-function SupplierRow({
-  name,
-  detail,
+function Highlight({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="relative inline-block">
+      <span className="relative z-10">{children}</span>
+      <span className="absolute inset-x-0 bottom-1 -z-0 h-3 rounded-full bg-[#ffe492]" />
+    </span>
+  );
+}
+
+function AlternatingSection({
+  eyebrow,
+  title,
+  body,
+  cta,
+  href,
+  visual,
+  reverse = false,
+}: {
+  eyebrow: string;
+  title: string;
+  body: string;
+  cta: string;
+  href: string;
+  visual: React.ReactNode;
+  reverse?: boolean;
+}) {
+  return (
+    <section className="overflow-hidden bg-white">
+      <div
+        className={`mx-auto grid w-full max-w-7xl gap-12 px-5 py-20 sm:px-8 lg:grid-cols-2 lg:items-center lg:py-24 ${
+          reverse ? "lg:[&>*:first-child]:order-2" : ""
+        }`}
+      >
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#4f9cf9]">{eyebrow}</p>
+          <h2 className="mt-3 max-w-xl text-4xl font-bold leading-tight sm:text-5xl">
+            {title.includes("reviewed") ? (
+              <>
+                One package, one <Highlight>reviewed</Highlight> release path
+              </>
+            ) : (
+              title
+            )}
+          </h2>
+          <p className="mt-5 max-w-xl text-base leading-8 text-[#526173]">{body}</p>
+          <Link
+            className="mt-7 inline-flex items-center justify-center gap-2 rounded-md bg-[#4f9cf9] px-5 py-3 text-sm font-semibold text-white hover:bg-[#2f7fe5]"
+            href={href}
+          >
+            {cta}
+            <ArrowRight size={16} aria-hidden />
+          </Link>
+        </div>
+        {visual}
+      </div>
+    </section>
+  );
+}
+
+function HeroIllustration() {
+  return (
+    <div className="relative mx-auto min-h-[520px] w-full max-w-[680px]">
+      <div className="absolute left-8 top-10 h-80 w-80 rounded-full border border-[#9ecbff]/35" />
+      <div className="absolute right-0 top-0 h-96 w-96 rounded-full border border-[#9ecbff]/25" />
+      <div className="absolute left-8 top-24 w-[82%] rounded-xl bg-[#cfe7ff] p-6 shadow-[0_28px_70px_rgba(0,0,0,0.22)]">
+        <div className="grid gap-5 lg:grid-cols-[0.82fr_1.18fr]">
+          <div className="grid content-between rounded-lg bg-[#eaf5ff] p-6 text-[#043873]">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em]">Supplier evidence</p>
+              <h3 className="mt-5 text-3xl font-bold leading-tight">Access before release</h3>
+            </div>
+            <div className="mt-10 grid gap-3">
+              <MiniStatus label="Evidence valid" tone="good" />
+              <MiniStatus label="Manual review" tone="warn" />
+              <MiniStatus label="Access suspended" tone="bad" />
+            </div>
+          </div>
+          <div className="grid gap-4">
+            <div className="rounded-lg bg-[#043873] p-5 text-white">
+              <p className="text-xs uppercase tracking-[0.18em] text-[#9ecbff]">Controlled RFQ</p>
+              <h3 className="mt-3 text-xl font-bold">Titanium aerospace bracket</h3>
+              <div className="mt-5 grid grid-cols-3 gap-2">
+                <MetricPill value="25" label="parts" />
+                <MetricPill value="5" label="axis" />
+                <MetricPill value="3" label="gates" />
+              </div>
+            </div>
+            <div className="grid gap-3 rounded-lg bg-white p-5 text-[#0b1220]">
+              <LineItem label="STEP model" />
+              <LineItem label="PDF drawing" />
+              <LineItem label="PO / BOM workbook" />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="absolute bottom-14 left-0 hidden rounded-xl bg-white p-4 text-[#0b1220] shadow-xl sm:block">
+        <div className="flex items-center gap-3">
+          <UsersRound className="text-[#4f9cf9]" size={20} aria-hidden />
+          <div>
+            <p className="text-sm font-semibold">Buyer + reviewer</p>
+            <p className="text-xs text-[#526173]">One access decision record</p>
+          </div>
+        </div>
+      </div>
+      <div className="absolute bottom-8 right-6 rounded-xl bg-[#ffe492] px-5 py-4 text-[#043873] shadow-xl">
+        <p className="text-sm font-bold">RFQ ready</p>
+        <p className="text-xs">after review</p>
+      </div>
+    </div>
+  );
+}
+
+function PackageIllustration() {
+  return (
+    <div className="relative mx-auto min-h-[460px] w-full max-w-[620px]">
+      <div className="absolute inset-8 rounded-full border border-[#dbe5f2]" />
+      <div className="absolute left-0 top-20 rounded-xl bg-[#eaf5ff] p-6 shadow-[0_20px_60px_rgba(15,23,42,0.10)] sm:w-[74%]">
+        <div className="rounded-lg bg-white p-5">
+          <div className="flex items-center justify-between border-b border-[#dbe5f2] pb-4">
+            <div>
+              <p className="text-sm font-semibold">Package readiness</p>
+              <p className="mt-1 text-xs text-[#526173]">Model, drawing, and PO/BOM present</p>
+            </div>
+            <span className="text-3xl font-bold text-[#4f9cf9]">100%</span>
+          </div>
+          <div className="mt-5 grid gap-3">
+            {["STEP/STP model", "PDF drawing", "XLSX line list", "QA flowdown"].map((label) => (
+              <LineItem key={label} label={label} />
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="absolute bottom-4 right-0 w-64 rounded-xl bg-[#043873] p-5 text-white shadow-xl">
+        <UploadCloud size={24} aria-hidden />
+        <h3 className="mt-8 text-xl font-bold">Structured intake</h3>
+        <p className="mt-2 text-sm leading-6 text-[#d7e8ff]">Requirements are normalized before supplier routing.</p>
+      </div>
+    </div>
+  );
+}
+
+function CollaborationIllustration() {
+  return (
+    <div className="relative mx-auto min-h-[470px] w-full max-w-[620px]">
+      <div className="absolute left-1/2 top-1/2 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-[#b9d7fb]" />
+      <div className="absolute left-1/2 top-1/2 h-48 w-48 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#dbe5f2]" />
+      <div className="absolute left-1/2 top-1/2 grid size-28 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-2xl bg-[#043873] text-white shadow-xl">
+        <ShieldCheck size={34} aria-hidden />
+      </div>
+      <PersonaCard className="left-0 top-14" title="Buyer" detail="Prepares package" />
+      <PersonaCard className="right-0 top-24" title="Reviewer" detail="Clears exception" />
+      <PersonaCard className="bottom-12 left-16" title="Supplier" detail="Quotes or no-bids" />
+      <div className="absolute bottom-16 right-6 rounded-xl bg-[#ffe492] px-5 py-4 text-[#043873] shadow-xl">
+        <p className="text-sm font-bold">Shared record</p>
+        <p className="text-xs">not an inbox thread</p>
+      </div>
+    </div>
+  );
+}
+
+function EvidenceIllustration() {
+  return (
+    <div className="relative mx-auto min-h-[470px] w-full max-w-[620px]">
+      <div className="absolute right-6 top-8 h-72 w-72 rounded-full bg-[#eaf5ff]" />
+      <div className="absolute left-0 top-20 w-[84%] rounded-xl bg-white p-5 shadow-[0_20px_70px_rgba(15,23,42,0.14)]">
+        <div className="rounded-lg bg-[#f8fbff] p-4">
+          <p className="font-semibold">Facility evidence graph</p>
+          <p className="mt-1 text-sm text-[#526173]">Capability, evidence, expiration, and access state.</p>
+          <div className="mt-5 grid gap-3">
+            <EvidenceRow supplier="Vector Aero Machining" score="100" status="Evidence valid" tone="good" />
+            <EvidenceRow supplier="Keystone Secure Fabrication" score="85" status="Manual review required" tone="warn" />
+            <EvidenceRow supplier="Talon Precision Group" score="44" status="Access suspended" tone="bad" />
+          </div>
+        </div>
+      </div>
+      <div className="absolute bottom-6 right-0 w-64 rounded-xl bg-[#043873] p-5 text-white shadow-xl">
+        <LockKeyhole size={22} aria-hidden />
+        <h3 className="mt-6 text-xl font-bold">Signed access path</h3>
+        <p className="mt-2 text-sm leading-6 text-[#d7e8ff]">Data-room links are routed through invite state.</p>
+      </div>
+    </div>
+  );
+}
+
+function MiniStatus({ label, tone }: { label: string; tone: "good" | "warn" | "bad" }) {
+  const toneClass = {
+    good: "bg-[#dff8ea] text-[#047857]",
+    warn: "bg-[#fff5c2] text-[#8a6100]",
+    bad: "bg-[#ffe1df] text-[#b42318]",
+  }[tone];
+
+  return <div className={`rounded-md px-3 py-2 text-sm font-semibold ${toneClass}`}>{label}</div>;
+}
+
+function MetricPill({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="rounded-md bg-white/10 px-3 py-3">
+      <p className="text-2xl font-bold">{value}</p>
+      <p className="text-xs uppercase tracking-[0.14em] text-[#9ecbff]">{label}</p>
+    </div>
+  );
+}
+
+function LineItem({ label }: { label: string }) {
+  return (
+    <div className="flex items-center justify-between rounded-md border border-[#dbe5f2] bg-white px-3 py-2 text-sm">
+      <span>{label}</span>
+      <CheckCircle2 size={15} className="text-[#16a34a]" aria-hidden />
+    </div>
+  );
+}
+
+function PersonaCard({ title, detail, className }: { title: string; detail: string; className: string }) {
+  return (
+    <div className={`absolute rounded-xl bg-white p-4 shadow-xl ${className}`}>
+      <div className="flex items-center gap-3">
+        <span className="grid size-9 place-items-center rounded-full bg-[#eaf5ff] text-[#4f9cf9]">
+          <UsersRound size={18} aria-hidden />
+        </span>
+        <div>
+          <p className="text-sm font-semibold">{title}</p>
+          <p className="text-xs text-[#526173]">{detail}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EvidenceRow({
+  supplier,
+  score,
+  status,
   tone,
 }: {
-  name: string;
-  detail: string;
+  supplier: string;
+  score: string;
+  status: string;
   tone: "good" | "warn" | "bad";
 }) {
-  const markerClass = {
-    good: "bg-[#aee1b8]",
-    warn: "bg-[#f2c86b]",
-    bad: "bg-[#ff9f8f]",
+  const toneClass = {
+    good: "border-[#a7f3d0] bg-[#ecfdf5] text-[#047857]",
+    warn: "border-[#fde68a] bg-[#fffbeb] text-[#92400e]",
+    bad: "border-[#fecaca] bg-[#fef2f2] text-[#b91c1c]",
   }[tone];
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md border border-white/10 bg-[#0b100d] p-3">
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-white">{name}</p>
-        <p className="mt-1 text-xs text-[#9ca9a1]">{detail}</p>
+    <div className="grid gap-3 rounded-lg border border-[#dbe5f2] bg-white p-3 sm:grid-cols-[1fr_auto] sm:items-center">
+      <div>
+        <p className="font-semibold">{supplier}</p>
+        <p className="mt-1 text-sm text-[#526173]">Facility score {score}</p>
       </div>
-      <span className={`size-2 shrink-0 rounded-full ${markerClass}`} />
+      <span className={`w-max rounded-md border px-3 py-1 text-xs font-semibold ${toneClass}`}>{status}</span>
     </div>
   );
 }

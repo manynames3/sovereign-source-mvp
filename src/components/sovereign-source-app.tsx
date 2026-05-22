@@ -75,7 +75,7 @@ type IntakeMode = "DRAWING" | "PO";
 
 type IntakeStage = "UPLOAD" | "REQUIREMENTS" | "CURATION" | "MATCHING" | "REVIEW" | "RFQ";
 
-type WorkspaceTab = "intake" | "qualification" | "rfq" | "review" | "audit";
+type WorkspaceTab = "intake" | "suppliers" | "qualification" | "rfq" | "review" | "audit";
 
 type IntakeFile = {
   name: string;
@@ -228,7 +228,7 @@ const avionicsEnclosureLineItems: SourceLineItem[] = [
 const demoIntakePackages: DemoIntakePackage[] = [
   {
     id: "titanium-bracket",
-    buttonLabel: "Titanium bracket demo",
+    buttonLabel: "Titanium bracket",
     files: titaniumAerospaceFiles,
     lineItems: titaniumAerospaceLineItems,
     summary: {
@@ -241,7 +241,7 @@ const demoIntakePackages: DemoIntakePackage[] = [
   },
   {
     id: "avionics-enclosure",
-    buttonLabel: "Avionics enclosure demo",
+    buttonLabel: "Avionics enclosure",
     files: avionicsEnclosureFiles,
     lineItems: avionicsEnclosureLineItems,
     summary: {
@@ -309,6 +309,7 @@ const nativeCadExtensions = new Set([
 
 const workspaceTabs: Array<{ id: WorkspaceTab; label: string; description: string; Icon: LucideIcon }> = [
   { id: "intake", label: "Intake", description: "Upload package", Icon: UploadCloud },
+  { id: "suppliers", label: "Suppliers", description: "Directory", Icon: Factory },
   { id: "qualification", label: "Qualification", description: "Supplier fit", Icon: Search },
   { id: "rfq", label: "RFQ", description: "Invites and responses", Icon: Send },
   { id: "review", label: "Review", description: "Evidence gates", Icon: BadgeCheck },
@@ -422,6 +423,39 @@ export function SovereignSourceApp() {
     [hasUserProvidedIntakePackage, intakeFiles],
   );
   const shouldShowIntakePackageReview = hasUserProvidedIntakePackage && intakeFiles.length > 0;
+  const intakeReadinessItems = [
+    {
+      label: "Files",
+      complete: intakeFiles.length > 0,
+      detail: intakeFiles.length > 0 ? `${intakeFiles.length} attached` : "Waiting for upload",
+    },
+    {
+      label: "Drawing",
+      complete: intakeFiles.some((file) => isDrawingFile(file.name)),
+      detail: intakeFiles.some((file) => isDrawingFile(file.name)) ? "Drawing present" : "PDF drawing preferred",
+    },
+    {
+      label: "Line Items",
+      complete: currentSourceLineItems.length > 0,
+      detail: currentSourceLineItems.length > 0 ? `${currentSourceLineItems.length} parsed` : "PO/BOM optional",
+    },
+    {
+      label: "Warnings",
+      complete: hasUserProvidedIntakePackage && intakePackageWarnings.length === 0,
+      detail:
+        !hasUserProvidedIntakePackage
+          ? "Waiting for package"
+          : intakePackageWarnings.length === 0
+          ? "No missing-package warnings"
+          : `${intakePackageWarnings.length} review checks`,
+    },
+  ];
+  const intakeReadinessPercent = Math.round(
+    (intakeReadinessItems.filter((item) => item.complete).length / intakeReadinessItems.length) * 100,
+  );
+  const stageProgressPercent = hasUserProvidedIntakePackage
+    ? Math.max(0, Math.round(((activeStageIndex + 1) / intakeStages.length) * 100))
+    : 0;
 
   const filteredMatches = workspace.matches.filter((match) =>
     matchFilter === "ALL" ? true : match.eligibilityStatus === matchFilter,
@@ -1125,8 +1159,8 @@ export function SovereignSourceApp() {
     return (
       <div className="grid min-h-screen bg-[#f7f8f4] px-4 py-8 text-[#1b1f1c]">
         <div className="mx-auto grid w-full max-w-xl content-center">
-          <div className="rounded-lg border border-[#22305c] bg-[#0d1533] p-6 shadow-sm">
-            <div className="grid size-12 place-items-center rounded-lg bg-[#263f38] text-white">
+          <div className="rounded-lg border border-[#e5eaf2] bg-[#ffffff] p-6 shadow-sm">
+            <div className="grid size-12 place-items-center rounded-lg bg-[#2563eb] text-white">
               <LockKeyhole size={22} aria-hidden />
             </div>
             <h1 className="mt-5 text-2xl font-semibold">Sign in to open the pilot workspace.</h1>
@@ -1138,13 +1172,13 @@ export function SovereignSourceApp() {
                 {apiMessage}
               </p>
             ) : (
-              <p className="mt-4 rounded-md border border-[#d9ded4] bg-[#101a3d] px-3 py-2 text-sm text-[#5d675c]">
+              <p className="mt-4 rounded-md border border-[#d9ded4] bg-[#f8fafc] px-3 py-2 text-sm text-[#5d675c]">
                 {apiMessage}
               </p>
             )}
             <div className="mt-5 flex flex-wrap gap-2">
               <button
-                className="inline-flex items-center justify-center gap-2 rounded-md border border-[#263f38] bg-[#263f38] px-4 py-2 text-sm font-semibold text-white hover:bg-[#34584d]"
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-[#2563eb] bg-[#2563eb] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1d4ed8]"
                 onClick={() => void startCognitoLogin()}
                 type="button"
               >
@@ -1152,7 +1186,7 @@ export function SovereignSourceApp() {
                 Sign in
               </button>
               <Link
-                className="inline-flex items-center justify-center rounded-md border border-[#24325f] bg-white px-4 py-2 text-sm font-semibold text-[#d9e4ff] hover:bg-[#eef2ea]"
+                className="inline-flex items-center justify-center rounded-md border border-[#d8e0eb] bg-white px-4 py-2 text-sm font-semibold text-[#334155] hover:bg-[#eef2ea]"
                 href="/"
               >
                 Back to landing page
@@ -1165,33 +1199,33 @@ export function SovereignSourceApp() {
   }
 
   return (
-    <div className="min-h-screen bg-[#070b1f] text-[#eef3ff]">
+    <div className="min-h-screen bg-[#f6f8fb] text-[#0f172a]">
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="sticky top-0 hidden h-screen min-h-0 flex-col border-r border-[#1c2756] bg-[#080d24] px-4 py-5 lg:flex">
+        <aside className="sticky top-0 hidden h-screen min-h-0 flex-col border-r border-[#e5eaf2] bg-[#ffffff] px-5 py-5 lg:flex">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="grid size-10 shrink-0 place-items-center rounded-lg border border-[#31427a] bg-[#101a3d] text-[#36d7ff] shadow-[0_0_24px_rgba(54,215,255,0.18)]">
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl border border-[#d8e0eb] bg-[#eff6ff] text-[#2563eb]">
               <ShieldCheck size={22} aria-hidden />
             </div>
             <div className="min-w-0">
               <p className="truncate text-lg font-semibold">Sovereign Source</p>
-              <p className="text-xs text-[#7c89b2]">Pilot workspace</p>
+              <p className="text-xs text-[#94a3b8]">Controlled sourcing</p>
             </div>
           </div>
 
-          <div className="mt-6 flex items-center gap-2 rounded-md border border-[#24325f] bg-[#0a102b] px-3 py-2 text-sm text-[#7c89b2]">
+          <div className="mt-6 flex items-center gap-2 rounded-md border border-[#d8e0eb] bg-[#f1f5f9] px-3 py-2 text-sm text-[#94a3b8]">
             <Search size={15} aria-hidden />
             <span>Search work packages</span>
           </div>
 
           <div className="mt-6 grid gap-1">
-            <p className="px-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#64729d]">Main menu</p>
+            <p className="px-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Main menu</p>
             {workspaceTabs.map(({ id, label, description, Icon }) => (
               <button
                 key={id}
-                className={`mt-1 grid gap-0.5 rounded-md border px-3 py-2 text-left transition ${
+                className={`mt-1 grid gap-0.5 rounded-xl border px-3 py-2.5 text-left transition ${
                   activeTab === id
-                    ? "border-[#9b3cff] bg-[#121b3f] text-white shadow-[0_0_24px_rgba(155,60,255,0.18)]"
-                    : "border-transparent text-[#b8c4e8] hover:border-[#24325f] hover:bg-[#101a3d]"
+                    ? "border-[#bfdbfe] bg-[#eff6ff] text-[#2563eb]"
+                    : "border-transparent text-[#475569] hover:border-[#d8e0eb] hover:bg-[#f8fafc]"
                 }`}
                 onClick={() => setActiveTab(id)}
                 type="button"
@@ -1200,32 +1234,32 @@ export function SovereignSourceApp() {
                   <Icon size={16} aria-hidden />
                   {label}
                 </span>
-                <span className="pl-6 text-xs text-[#7c89b2]">{description}</span>
+                <span className="pl-6 text-xs text-[#94a3b8]">{description}</span>
               </button>
             ))}
           </div>
 
-          <div className="mt-6 grid gap-2 rounded-lg border border-[#1c2756] bg-[#0d1533] p-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64729d]">Workspace</p>
+          <div className="mt-6 grid gap-2 rounded-2xl border border-[#e5eaf2] bg-[#f8fafc] p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Network status</p>
             <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="rounded-md border border-[#1f7f5c] bg-[#0f2a33] px-2 py-2">
-                <p className="text-lg font-semibold text-[#6ee7b7]">{matchCounts.ELIGIBLE}</p>
-                    <p className="text-[11px] text-[#94a3c7]">eligible</p>
+              <div className="rounded-md border border-[#a7f3d0] bg-[#ecfdf5] px-2 py-2">
+                <p className="text-lg font-semibold text-[#047857]">{matchCounts.ELIGIBLE}</p>
+                    <p className="text-[11px] text-[#64748b]">eligible</p>
               </div>
-              <div className="rounded-md border border-[#7a5d18] bg-[#2b2436] px-2 py-2">
-                <p className="text-lg font-semibold text-[#f7d778]">{matchCounts.MANUAL_REVIEW}</p>
-                <p className="text-[11px] text-[#94a3c7]">review</p>
+              <div className="rounded-md border border-[#fde68a] bg-[#fffbeb] px-2 py-2">
+                <p className="text-lg font-semibold text-[#92400e]">{matchCounts.MANUAL_REVIEW}</p>
+                <p className="text-[11px] text-[#64748b]">review</p>
               </div>
-              <div className="rounded-md border border-[#7f3144] bg-[#2b1428] px-2 py-2">
-                <p className="text-lg font-semibold text-[#ff9a9a]">{matchCounts.INELIGIBLE}</p>
-                <p className="text-[11px] text-[#94a3c7]">blocked</p>
+              <div className="rounded-md border border-[#fecaca] bg-[#fef2f2] px-2 py-2">
+                <p className="text-lg font-semibold text-[#b91c1c]">{matchCounts.INELIGIBLE}</p>
+                <p className="text-[11px] text-[#64748b]">blocked</p>
               </div>
             </div>
           </div>
 
-          <div className="mt-auto grid gap-2 border-t border-[#1c2756] pt-4">
+          <div className="mt-auto grid gap-2 border-t border-[#e5eaf2] pt-4">
             <button
-              className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#9b3cff] bg-[#9b3cff] px-3 py-2 text-sm font-semibold text-white hover:bg-[#ad5cff]"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#2563eb] bg-[#2563eb] px-3 py-2 text-sm font-semibold text-white hover:bg-[#1d4ed8]"
               onClick={() => setActiveTab("intake")}
               type="button"
             >
@@ -1233,7 +1267,7 @@ export function SovereignSourceApp() {
               New Source Request
             </button>
             <button
-              className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#24325f] bg-[#101a3d] px-3 py-2 text-sm font-medium text-[#d9e4ff] hover:border-[#36d7ff]"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#d8e0eb] bg-[#f8fafc] px-3 py-2 text-sm font-medium text-[#334155] hover:border-[#2563eb]"
               onClick={resetDemoData}
               type="button"
             >
@@ -1243,7 +1277,7 @@ export function SovereignSourceApp() {
             {isAuthConfigured() && apiBaseUrl() ? (
               auth ? (
                 <button
-                  className="inline-flex w-full items-center justify-center rounded-md border border-[#24325f] bg-[#101a3d] px-3 py-2 text-sm font-medium text-[#d9e4ff] hover:border-[#36d7ff]"
+                  className="inline-flex w-full items-center justify-center rounded-md border border-[#d8e0eb] bg-[#f8fafc] px-3 py-2 text-sm font-medium text-[#334155] hover:border-[#2563eb]"
                   onClick={() => {
                     clearStoredAuth();
                     setAuth(undefined);
@@ -1256,7 +1290,7 @@ export function SovereignSourceApp() {
                 </button>
               ) : (
                 <button
-                  className="inline-flex w-full items-center justify-center rounded-md border border-[#24325f] bg-[#101a3d] px-3 py-2 text-sm font-medium text-[#d9e4ff] hover:border-[#36d7ff]"
+                  className="inline-flex w-full items-center justify-center rounded-md border border-[#d8e0eb] bg-[#f8fafc] px-3 py-2 text-sm font-medium text-[#334155] hover:border-[#2563eb]"
                   onClick={() => void startCognitoLogin()}
                   type="button"
                 >
@@ -1268,17 +1302,38 @@ export function SovereignSourceApp() {
         </aside>
 
         <div className="min-w-0">
-          <header className="sticky top-0 z-30 border-b border-[#1c2756] bg-[#080d24]/95 text-white backdrop-blur lg:hidden">
+          <header className="sticky top-0 z-30 hidden border-b border-[#e5eaf2] bg-white/90 px-8 py-4 backdrop-blur lg:flex lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs font-medium text-[#94a3b8]">Dashboards / Sourcing workspace</p>
+              <h1 className="mt-1 text-xl font-semibold text-[#0f172a]">Controlled RFQ workspace</h1>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="flex w-72 items-center gap-2 rounded-xl border border-[#e5eaf2] bg-[#f8fafc] px-3 py-2 text-sm text-[#64748b]">
+                <Search size={16} aria-hidden />
+                <input className="min-w-0 flex-1 bg-transparent outline-none" placeholder="Search packages, suppliers" />
+              </label>
+              <div className="flex items-center gap-2">
+                <StatusBadge tone="good" label={`${matchCounts.ELIGIBLE} eligible`} />
+                <StatusBadge tone="warn" label={`${matchCounts.MANUAL_REVIEW} review`} />
+                <StatusBadge tone="bad" label={`${matchCounts.INELIGIBLE} blocked`} />
+              </div>
+              <CommandButton label="New Source Request" onClick={() => setActiveTab("intake")}>
+                <UploadCloud size={16} aria-hidden />
+              </CommandButton>
+            </div>
+          </header>
+
+          <header className="sticky top-0 z-30 border-b border-[#e5eaf2] bg-[#ffffff]/95 text-[#0f172a] backdrop-blur lg:hidden">
         <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-3 px-3 py-3 sm:px-6 sm:py-5 lg:flex-row lg:items-center lg:justify-between lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="grid size-9 shrink-0 place-items-center rounded-lg border border-[#31427a] bg-[#101a3d] text-[#36d7ff] shadow-[0_0_24px_rgba(54,215,255,0.18)] sm:size-10">
+            <div className="grid size-9 shrink-0 place-items-center rounded-xl border border-[#d8e0eb] bg-[#eff6ff] text-[#2563eb] sm:size-10">
               <ShieldCheck size={22} aria-hidden />
             </div>
             <div className="min-w-0">
-              <h1 className="truncate text-lg font-semibold sm:text-2xl">Sovereign Source MVP</h1>
-              <p className="text-xs text-[#94a3c7] sm:text-sm">
+              <h1 className="truncate text-lg font-semibold sm:text-2xl">Sovereign Source</h1>
+              <p className="text-xs text-[#64748b] sm:text-sm">
                 {auth?.email
-                  ? `${auth.email} · persisted pilot workspace`
+                  ? `${auth.email} · persisted sourcing workspace`
                   : "Aegis Advanced Systems · curated network plus sourcing software"}
               </p>
             </div>
@@ -1293,7 +1348,7 @@ export function SovereignSourceApp() {
                 <UploadCloud size={16} aria-hidden />
               </CommandButton>
               <button
-                className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#24325f] bg-[#101a3d] px-3 py-2 text-sm font-medium text-[#d9e4ff] hover:border-[#36d7ff] sm:w-auto"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#d8e0eb] bg-[#f8fafc] px-3 py-2 text-sm font-medium text-[#334155] hover:border-[#2563eb] sm:w-auto"
                 onClick={resetDemoData}
                 type="button"
               >
@@ -1303,7 +1358,7 @@ export function SovereignSourceApp() {
               {isAuthConfigured() && apiBaseUrl() ? (
                 auth ? (
                   <button
-                    className="col-span-2 inline-flex w-full items-center justify-center rounded-md border border-[#24325f] bg-[#101a3d] px-3 py-2 text-sm font-medium text-[#d9e4ff] hover:border-[#36d7ff] sm:col-span-1 sm:w-auto"
+                    className="col-span-2 inline-flex w-full items-center justify-center rounded-md border border-[#d8e0eb] bg-[#f8fafc] px-3 py-2 text-sm font-medium text-[#334155] hover:border-[#2563eb] sm:col-span-1 sm:w-auto"
                     onClick={() => {
                       clearStoredAuth();
                       setAuth(undefined);
@@ -1316,7 +1371,7 @@ export function SovereignSourceApp() {
                   </button>
                 ) : (
                   <button
-                    className="col-span-2 inline-flex w-full items-center justify-center rounded-md border border-[#9b3cff] bg-[#121b3f] px-3 py-2 text-sm font-medium text-white hover:bg-[#1a2553] sm:col-span-1 sm:w-auto"
+                    className="col-span-2 inline-flex w-full items-center justify-center rounded-md border border-[#2563eb] bg-[#2563eb] px-3 py-2 text-sm font-medium text-white hover:bg-[#1d4ed8] sm:col-span-1 sm:w-auto"
                     onClick={() => void startCognitoLogin()}
                     type="button"
                   >
@@ -1334,14 +1389,14 @@ export function SovereignSourceApp() {
         </div>
       </header>
 
-      <main className="mx-auto grid w-full max-w-[1500px] gap-4 px-3 py-4 sm:px-6 sm:py-5 lg:px-8">
+      <main className="mx-auto grid w-full max-w-[1500px] gap-5 px-3 py-4 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
         {currentPackageSummary ? (
-          <section className="min-w-0 rounded-lg border border-[#22305c] bg-[#0d1533] p-3 text-white shadow-[0_18px_50px_rgba(0,0,0,0.32)] sm:p-4">
+          <section className="min-w-0 rounded-2xl border border-[#e5eaf2] bg-[#ffffff] p-3 text-[#0f172a] shadow-[0_12px_30px_rgba(15,23,42,0.06)] sm:p-4">
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64729d]">Current package</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">Current package</p>
                 <h2 className="mt-2 text-lg font-semibold sm:text-xl">{currentPackageSummary.title}</h2>
-                <p className="mt-1 text-sm text-[#94a3c7]">
+                <p className="mt-1 text-sm text-[#64748b]">
                   {currentPackageSummary.classificationLabel} · {currentPackageSummary.processLabel} ·{" "}
                   {currentPackageSummary.quantityLabel}
                 </p>
@@ -1353,8 +1408,8 @@ export function SovereignSourceApp() {
                       key={role.id}
                       className={`rounded-md border px-2 py-2 text-xs font-medium sm:px-3 sm:text-sm ${
                         activeRole === role.id
-                          ? "border-[#9b3cff] bg-[#9b3cff] text-white"
-                          : "border-[#24325f] bg-[#101a3d] text-[#d9e4ff] hover:border-[#36d7ff]"
+                          ? "border-[#2563eb] bg-[#2563eb] text-white"
+                          : "border-[#d8e0eb] bg-[#f8fafc] text-[#334155] hover:border-[#2563eb]"
                       }`}
                       onClick={() => setActiveRole(role.id)}
                       type="button"
@@ -1365,7 +1420,7 @@ export function SovereignSourceApp() {
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                   <button
-                    className="inline-flex items-center justify-center gap-2 rounded-md border border-[#24325f] bg-[#101a3d] px-3 py-2 text-sm font-medium text-[#d9e4ff] hover:border-[#36d7ff]"
+                    className="inline-flex items-center justify-center gap-2 rounded-md border border-[#d8e0eb] bg-[#f8fafc] px-3 py-2 text-sm font-medium text-[#334155] hover:border-[#2563eb]"
                     onClick={resetDemoData}
                     type="button"
                   >
@@ -1373,7 +1428,7 @@ export function SovereignSourceApp() {
                     Reset
                   </button>
                   <a
-                    className="inline-flex items-center justify-center gap-2 rounded-md border border-[#9b3cff] bg-[#9b3cff] px-3 py-2 text-sm font-medium text-white hover:bg-[#ad5cff]"
+                    className="inline-flex items-center justify-center gap-2 rounded-md border border-[#2563eb] bg-[#2563eb] px-3 py-2 text-sm font-medium text-white hover:bg-[#1d4ed8]"
                     download="sovereign-source-audit-export.txt"
                     href={`data:text/plain;charset=utf-8,${encodeURIComponent(auditExportText)}`}
                   >
@@ -1386,15 +1441,15 @@ export function SovereignSourceApp() {
           </section>
         ) : null}
 
-        <nav className="min-w-0 rounded-lg border border-[#22305c] bg-[#0d1533] p-1.5 shadow-[0_12px_36px_rgba(0,0,0,0.22)] sm:p-2 lg:hidden">
-          <div className="grid grid-cols-5 gap-1 sm:flex sm:min-w-max sm:gap-2">
+        <nav className="min-w-0 rounded-2xl border border-[#e5eaf2] bg-[#ffffff] p-1.5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] sm:p-2 lg:hidden">
+          <div className="grid grid-cols-3 gap-1 sm:flex sm:min-w-max sm:gap-2">
             {workspaceTabs.map(({ id, label, description, Icon }) => (
               <button
                 key={id}
                 className={`grid min-w-0 gap-1 rounded-md border px-1 py-2 text-center sm:min-w-44 sm:px-3 sm:text-left ${
                   activeTab === id
-                    ? "border-[#9b3cff] bg-[#9b3cff] text-white"
-                    : "border-[#22305c] bg-[#101a3d] text-[#d9e4ff] hover:border-[#36d7ff]"
+                    ? "border-[#2563eb] bg-[#2563eb] text-white"
+                    : "border-[#e5eaf2] bg-[#f8fafc] text-[#334155] hover:border-[#2563eb]"
                 }`}
                 onClick={() => setActiveTab(id)}
                 type="button"
@@ -1404,7 +1459,7 @@ export function SovereignSourceApp() {
                   <span className="w-full truncate sm:hidden">{id === "qualification" ? "Qualify" : label}</span>
                   <span className="hidden sm:inline">{label}</span>
                 </span>
-                <span className={activeTab === id ? "hidden text-xs text-[#ead7ff] sm:block" : "hidden text-xs text-[#94a3c7] sm:block"}>
+                <span className={activeTab === id ? "hidden text-xs text-[#dbeafe] sm:block" : "hidden text-xs text-[#64748b] sm:block"}>
                   {description}
                 </span>
               </button>
@@ -1417,18 +1472,18 @@ export function SovereignSourceApp() {
             <section
               className={`min-w-0 rounded-lg border p-4 ${
                 apiStatus === "connected"
-                  ? "border-[#1f7f5c] bg-[#0f2a33]"
+                  ? "border-[#a7f3d0] bg-[#ecfdf5]"
                   : apiStatus === "error"
-                    ? "border-[#7f3144] bg-[#2b1428]"
-                    : "border-[#7a5d18] bg-[#261f32]"
+                    ? "border-[#fecaca] bg-[#fef2f2]"
+                    : "border-[#fde68a] bg-[#fffbeb]"
               }`}
             >
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="min-w-0">
-                  <p className="font-semibold text-[#eef3ff]">
+                  <p className="font-semibold text-[#0f172a]">
                     {apiStatus === "connected" ? "Persisted pilot data" : "Controlled data notice"}
                   </p>
-                  <p className="text-sm text-[#94a3c7]">
+                  <p className="text-sm text-[#64748b]">
                     {apiStatus === "connected"
                       ? apiMessage
                       : "Production uploads should go through approved storage, access gates, and audit logging before controlled RFQ release."}
@@ -1438,328 +1493,7 @@ export function SovereignSourceApp() {
             </section>
           ) : null}
 
-          <section
-            id="source-intake"
-            className={
-              activeTab === "intake"
-                ? "min-w-0 overflow-hidden rounded-lg border border-[#22305c] bg-[#080d24] shadow-[0_18px_50px_rgba(0,0,0,0.32)]"
-                : "hidden"
-            }
-          >
-            <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_420px]">
-              <div className="grid gap-5 p-3 sm:p-5">
-                <div className="grid gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64729d]">
-                      Source request
-                    </p>
-                    <h2 className="mt-3 max-w-4xl text-2xl font-semibold leading-tight sm:text-4xl">
-                      Upload a package and prepare the RFQ
-                    </h2>
-                    <p className="mt-3 max-w-3xl text-sm leading-6 text-[#94a3c7]">
-                      Add drawings, models, PO lines, and supporting documents. The workspace turns the package into
-                      reviewable requirements before buyer release.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#22305c] bg-[#0d1533] px-3 py-2 text-xs text-[#94a3c7]">
-                    <span className="font-medium text-[#eef3ff]">Intake</span>
-                    <span>{intakeFiles.length} files</span>
-                    <span className="text-[#33436d]">/</span>
-                    <span>{currentSourceLineItems.length} line items</span>
-                    <span className="text-[#33436d]">/</span>
-                    <span>{matchCounts.ELIGIBLE} eligible vendors</span>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 xl:grid-cols-[minmax(460px,0.95fr)_minmax(0,1fr)]">
-                  <div className="rounded-lg border border-[#22305c] bg-[#0d1533] p-4">
-                    <div className="flex gap-2">
-                      {(["DRAWING", "PO"] as const).map((mode) => (
-                        <button
-                          key={mode}
-                          className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium ${
-                            intakeMode === mode
-                              ? "border-[#9b3cff] bg-[#9b3cff] text-white"
-                              : "border-[#24325f] bg-[#101a3d] text-[#d9e4ff] hover:border-[#36d7ff]"
-                          }`}
-                          onClick={() => setIntakeMode(mode)}
-                          type="button"
-                        >
-                          {mode === "DRAWING" ? "Drawing" : "PO / BOM"}
-                        </button>
-                      ))}
-                    </div>
-                    <label
-                      className={`mt-4 grid min-h-64 cursor-pointer place-items-center rounded-lg border border-dashed p-5 text-center transition sm:min-h-80 sm:p-6 ${
-                        isIntakeDragActive
-                          ? "border-[#36d7ff] bg-[#11264d] shadow-[inset_0_0_0_2px_rgba(54,215,255,0.22)]"
-                          : "border-[#31427a] bg-[#0a102b] hover:border-[#36d7ff]"
-                      }`}
-                      onDragEnter={handleIntakeDragEnter}
-                      onDragLeave={handleIntakeDragLeave}
-                      onDragOver={handleIntakeDragOver}
-                      onDrop={(event) => void handleIntakeDrop(event)}
-                    >
-                      <input
-                        className="sr-only"
-                        multiple
-                        accept=".step,.stp,.pdf,.xlsx,.xls,.csv,.zip,.dxf,.dwg,.stl,.iges,.igs,.x_t,.x_b,.ipt,.iam,.sldprt,.sldasm,.prt,.asm,.catpart,.catproduct"
-                        onChange={(event) => void handleIntakeUpload(event.target.files)}
-                        type="file"
-                      />
-                      <span className="grid gap-3">
-                        <span className="mx-auto grid size-16 place-items-center rounded-lg border border-[#36d7ff] bg-[#101a3d] text-[#36d7ff]">
-                          <UploadCloud size={30} aria-hidden />
-                        </span>
-                        <span>
-                          <span className="block text-lg font-medium">
-                            {isIntakeDragActive ? "Drop files to attach them" : "Upload drawing, model, PO, or line list"}
-                          </span>
-                          <span className="mt-1 block text-sm text-[#94a3c7]">
-                            Drag files here or browse for STEP, PDF, XLSX, CSV, ZIP, or native CAD.
-                          </span>
-                        </span>
-                      </span>
-                    </label>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      {demoIntakePackages.map((demoPackage) => (
-                        <button
-                          key={demoPackage.id}
-                          className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#24325f] bg-[#101a3d] px-3 py-2 text-sm font-medium text-[#d9e4ff] hover:border-[#36d7ff]"
-                          onClick={() => loadDemoIntake(demoPackage.id)}
-                          type="button"
-                        >
-                          <PackagePlus size={16} aria-hidden />
-                          {demoPackage.buttonLabel}
-                        </button>
-                      ))}
-                      <CommandButton
-                        className="w-full sm:col-span-2"
-                        disabled={!hasUserProvidedIntakePackage}
-                        label="Find Qualified Vendors"
-                        onClick={findQualifiedVendorsFromIntake}
-                      >
-                        <Search size={16} aria-hidden />
-                      </CommandButton>
-                    </div>
-                    </div>
-
-                    <div className="grid gap-3">
-                      <DetailBlock title="Uploaded Package">
-                        {intakeFiles.length > 0 ? (
-                          intakeFiles.map((file) => (
-                            <div key={file.name} className="flex min-w-0 items-center justify-between gap-3">
-                              <span className="flex min-w-0 items-center gap-2">
-                                {file.kind === "DRAWING" ? (
-                                  <FileLock2 className="shrink-0" size={15} aria-hidden />
-                                ) : (
-                                  <FileSpreadsheet className="shrink-0" size={15} aria-hidden />
-                                )}
-                                <span className="truncate">{file.name}</span>
-                              </span>
-                              <span className="shrink-0 text-xs text-[#94a3c7]">{file.sizeLabel}</span>
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-sm text-[#94a3c7]">
-                            Upload files or load a demo package to start requirement detection.
-                          </p>
-                        )}
-                      </DetailBlock>
-                    <DetailBlock title="Detected Requirements">
-                      <div className="grid gap-3">
-                        <div className="flex flex-wrap gap-2">
-                          {detectedRequirementChips.map((item) => (
-                            <span key={item} className="rounded-md border border-[#24325f] bg-[#101a3d] px-2 py-1 text-xs text-[#d9e4ff]">
-                              {item}
-                            </span>
-                          ))}
-                        </div>
-                        {shouldShowIntakePackageReview ? (
-                          <div className="grid gap-2">
-                            {intakePackageWarnings.length > 0 ? (
-                            intakePackageWarnings.map((warning) => (
-                              <div
-                                key={warning.title}
-                                className="flex gap-2 rounded-md border border-[#7a5d18] bg-[#2b2436] p-2 text-xs text-[#f7d778]"
-                              >
-                                <AlertTriangle className="mt-0.5 shrink-0" size={14} aria-hidden />
-                                <div>
-                                  <p className="font-medium text-[#fff3bc]">{warning.title}</p>
-                                  <p className="mt-0.5 leading-5">{warning.detail}</p>
-                                </div>
-                              </div>
-                            ))
-                            ) : (
-                            <div className="flex gap-2 rounded-md border border-[#1f7f5c] bg-[#0f2a33] p-2 text-xs text-[#6ee7b7]">
-                              <CheckCircle2 className="mt-0.5 shrink-0" size={14} aria-hidden />
-                              <div>
-                                <p className="font-medium">Package ready for review</p>
-                                <p className="mt-0.5 leading-5">
-                                  Model, drawing, and structured line-item data are present for review.
-                                </p>
-                              </div>
-                            </div>
-                            )}
-                          </div>
-                        ) : null}
-                      </div>
-                    </DetailBlock>
-                  </div>
-                </div>
-
-                <div className={currentSourceLineItems.length > 0 ? "grid gap-3 sm:hidden" : "hidden"}>
-                  {currentSourceLineItems.map((item) => (
-                    <div key={item.partNumber} className="rounded-lg border border-[#22305c] bg-[#0d1533] p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="font-medium">{item.partNumber}</p>
-                          <p className="mt-1 text-sm text-[#94a3c7]">{item.description}</p>
-                        </div>
-                        <StatusBadge tone={lineItemTone(item.status)} label={item.status} />
-                      </div>
-                      <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-[#94a3c7]">
-                        <div>
-                          <dt className="text-[#7c89b2]">Process</dt>
-                          <dd className="font-medium text-[#eef3ff]">{processLabels[item.process]}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-[#7c89b2]">Qty</dt>
-                          <dd className="font-medium text-[#eef3ff]">{item.quantity}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-[#7c89b2]">Material</dt>
-                          <dd className="font-medium text-[#eef3ff]">{item.material}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-[#7c89b2]">Control</dt>
-                          <dd className="font-medium text-[#eef3ff]">
-                            {item.classification.replaceAll("_", " ").toLowerCase()}
-                          </dd>
-                        </div>
-                      </dl>
-                    </div>
-                  ))}
-                </div>
-
-                <div
-                  className={
-                    currentSourceLineItems.length > 0
-                      ? "hidden overflow-x-auto rounded-lg border border-[#22305c] bg-[#0d1533] sm:block"
-                      : "hidden"
-                  }
-                >
-                  <table className="min-w-[760px] text-left text-sm">
-                    <thead className="bg-[#101a3d] text-[#94a3c7]">
-                      <tr className="border-b border-[#22305c]">
-                        <th className="py-2 pr-4 pl-3 font-medium">Line</th>
-                        <th className="py-2 pr-4 font-medium">Process</th>
-                        <th className="py-2 pr-4 font-medium">Material</th>
-                        <th className="py-2 pr-4 font-medium">Qty</th>
-                        <th className="py-2 pr-4 font-medium">Control</th>
-                        <th className="py-2 pr-3 font-medium">Gate</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {currentSourceLineItems.map((item) => (
-                        <tr key={item.partNumber} className="border-b border-[#22305c] last:border-0">
-                          <td className="py-3 pr-4 pl-3">
-                            <p className="font-medium">{item.partNumber}</p>
-                            <p className="text-xs text-[#94a3c7]">{item.description}</p>
-                          </td>
-                          <td className="py-3 pr-4">{processLabels[item.process]}</td>
-                          <td className="py-3 pr-4">{item.material}</td>
-                          <td className="py-3 pr-4">{item.quantity}</td>
-                          <td className="py-3 pr-4">{item.classification.replaceAll("_", " ").toLowerCase()}</td>
-                          <td className="py-3 pr-3">
-                            <StatusBadge tone={lineItemTone(item.status)} label={item.status} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="border-t border-[#22305c] bg-[#0b102b] p-4 text-white xl:border-t-0 xl:border-l">
-                <div className="grid gap-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Route size={18} aria-hidden />
-                      <h2 className="font-semibold">Curated Network Pipeline</h2>
-                    </div>
-                    <div className="mt-4 grid gap-3">
-                      {intakeStages.map((stage, index) => {
-                        const isActive = index === activeStageIndex;
-                        const isComplete = index < activeStageIndex;
-                        return (
-                          <div
-                            key={stage.id}
-                            className={`rounded-lg border p-3 ${
-                              isActive
-                                ? "border-[#9b3cff] bg-[#9b3cff] text-white"
-                                : isComplete
-                                  ? "border-[#1f7f5c] bg-[#0f2a33] text-[#d9e4ff]"
-                                  : "border-[#22305c] bg-[#101a3d] text-[#d9e4ff]"
-                            }`}
-                          >
-                            <div className="flex items-center gap-2">
-                              {isComplete ? (
-                                <CheckCircle2 size={16} className={isActive ? "text-white" : "text-[#36d7ff]"} aria-hidden />
-                              ) : (
-                                <span className="grid size-4 place-items-center rounded-full border border-current text-[10px]">
-                                  {index + 1}
-                                </span>
-                              )}
-                              <p className="font-medium">{stage.title}</p>
-                            </div>
-                            <p className={isActive ? "mt-1 text-sm text-[#ead7ff]" : "mt-1 text-sm text-[#94a3c7]"}>
-                              {stage.detail}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <DetailBlock title="Vendor Shortlist">
-                    {shortlistMatches.map((match) => (
-                      <div key={match.id} className="grid gap-1 border-b border-[#22305c] pb-2 last:border-0 last:pb-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium text-[#eef3ff]">{organizationName(data, match.supplierOrgId)}</span>
-                          <StatusBadge
-                            tone={statusTone[match.eligibilityStatus]}
-                            label={match.eligibilityStatus.replaceAll("_", " ").toLowerCase()}
-                          />
-                        </div>
-                        <p className="text-xs text-[#94a3c7]">
-                          {match.score} score · {leadTimeEstimate(match.supplierOrgId)} · {facilityName(data, match.facilityId)}
-                        </p>
-                        <p className="text-xs text-[#94a3c7]">{curationSignal(match)}</p>
-                        <p className="text-xs text-[#94a3c7]">{firstOrderSignal(match)}</p>
-                        <p className="text-xs text-[#94a3c7]">{humanSupportSignal(match)}</p>
-                        <p className="text-xs text-[#94a3c7]">
-                          {match.eligibilityStatus === "ELIGIBLE"
-                            ? "Evidence valid for routing."
-                            : match.eligibilityStatus === "MANUAL_REVIEW"
-                              ? "Manual review required before routing."
-                              : "Access suspended for controlled routing."}
-                        </p>
-                      </div>
-                    ))}
-                  </DetailBlock>
-
-                  <DetailBlock title="Next Action">
-                    <p>Evidence valid suppliers can receive a secure RFQ invite.</p>
-                    <p>Manual review required suppliers stay out of automatic routing.</p>
-                    <p>Access suspended suppliers cannot receive controlled files.</p>
-                  </DetailBlock>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section id="dashboard" className="grid min-w-0 gap-4 lg:grid-cols-4">
+          <section id="dashboard" className="grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
             <MetricCard
               icon={<ClipboardList size={20} aria-hidden />}
               label="RFQs in Progress"
@@ -1786,12 +1520,478 @@ export function SovereignSourceApp() {
             />
           </section>
 
-          <section id="suppliers" className="hidden">
+          <section
+            id="source-intake"
+            className={
+              activeTab === "intake"
+                ? "grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_400px]"
+                : "hidden"
+            }
+          >
+            <div className="grid min-w-0 gap-5">
+              <section className="min-w-0 overflow-hidden rounded-lg border border-[#e5eaf2] bg-white shadow-[0_14px_36px_rgba(15,23,42,0.07)]">
+                <div className="border-b border-[#e5eaf2] p-4 sm:p-5">
+                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-start">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#94a3b8]">
+                        Source intake
+                      </p>
+                      <h2 className="mt-3 max-w-3xl text-2xl font-semibold leading-tight sm:text-4xl">
+                        Start a controlled RFQ package
+                      </h2>
+                      <p className="mt-3 max-w-3xl text-sm leading-6 text-[#64748b]">
+                        Attach the model, drawing, and PO/BOM package. Sovereign Source turns the package into
+                        reviewable requirements before buyer release.
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-[#e5eaf2] bg-[#f8fafc] p-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium text-[#334155]">Package readiness</p>
+                        <p className="text-2xl font-semibold text-[#0f172a]">{intakeReadinessPercent}%</p>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#e2e8f0]">
+                        <div
+                          className="h-full rounded-full bg-[#2563eb]"
+                          style={{ width: `${intakeReadinessPercent}%` }}
+                        />
+                      </div>
+                      <p className="mt-2 text-xs text-[#64748b]">
+                        {hasUserProvidedIntakePackage
+                          ? `${intakePackageWarnings.length} package checks need review`
+                          : "Upload or load a sample package to start."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 p-4 lg:grid-cols-[minmax(420px,1.1fr)_minmax(280px,0.9fr)] sm:p-5">
+                  <div className="rounded-lg border border-[#e5eaf2] bg-[#f8fafc] p-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["DRAWING", "PO"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          className={`rounded-md border px-3 py-2 text-sm font-medium ${
+                            intakeMode === mode
+                              ? "border-[#2563eb] bg-[#2563eb] text-white"
+                              : "border-[#d8e0eb] bg-white text-[#334155] hover:border-[#2563eb]"
+                          }`}
+                          onClick={() => setIntakeMode(mode)}
+                          type="button"
+                        >
+                          {mode === "DRAWING" ? "Drawing / Model" : "PO / BOM"}
+                        </button>
+                      ))}
+                    </div>
+                    <label
+                      className={`mt-3 grid min-h-72 cursor-pointer place-items-center rounded-lg border border-dashed p-5 text-center transition sm:min-h-96 sm:p-6 ${
+                        isIntakeDragActive
+                          ? "border-[#2563eb] bg-[#eff6ff] shadow-[inset_0_0_0_2px_rgba(37,99,235,0.16)]"
+                          : "border-[#cbd5e1] bg-white hover:border-[#2563eb]"
+                      }`}
+                      onDragEnter={handleIntakeDragEnter}
+                      onDragLeave={handleIntakeDragLeave}
+                      onDragOver={handleIntakeDragOver}
+                      onDrop={(event) => void handleIntakeDrop(event)}
+                    >
+                      <input
+                        className="sr-only"
+                        multiple
+                        accept=".step,.stp,.pdf,.xlsx,.xls,.csv,.zip,.dxf,.dwg,.stl,.iges,.igs,.x_t,.x_b,.ipt,.iam,.sldprt,.sldasm,.prt,.asm,.catpart,.catproduct"
+                        onChange={(event) => void handleIntakeUpload(event.target.files)}
+                        type="file"
+                      />
+                      <span className="grid gap-3">
+                        <span className="mx-auto grid size-16 place-items-center rounded-lg border border-[#bfdbfe] bg-[#eff6ff] text-[#2563eb]">
+                          <UploadCloud size={30} aria-hidden />
+                        </span>
+                        <span>
+                          <span className="block text-lg font-semibold text-[#0f172a]">
+                            {isIntakeDragActive ? "Drop files to attach them" : "Drop package files here"}
+                          </span>
+                          <span className="mx-auto mt-2 block max-w-sm text-sm text-[#64748b]">
+                            STEP/STP plus PDF drawing gives the best requirement detection. Add XLSX/CSV for PO or BOM
+                            line items.
+                          </span>
+                        </span>
+                      </span>
+                    </label>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      {demoIntakePackages.map((demoPackage) => (
+                        <button
+                          key={demoPackage.id}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#d8e0eb] bg-white px-3 py-2 text-sm font-medium text-[#334155] hover:border-[#2563eb]"
+                          onClick={() => loadDemoIntake(demoPackage.id)}
+                          type="button"
+                        >
+                          <PackagePlus size={16} aria-hidden />
+                          {demoPackage.buttonLabel}
+                        </button>
+                      ))}
+                      <CommandButton
+                        className="w-full"
+                        disabled={!hasUserProvidedIntakePackage}
+                        label={hasUserProvidedIntakePackage ? "Find Vendors" : "Attach Package First"}
+                        onClick={findQualifiedVendorsFromIntake}
+                      >
+                        <Search size={16} aria-hidden />
+                      </CommandButton>
+                    </div>
+                  </div>
+
+                  <div className="grid content-start gap-4">
+                    <div className="rounded-lg border border-[#e5eaf2] bg-white p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-[#0f172a]">
+                            {currentPackageSummary?.title ?? "No package attached"}
+                          </p>
+                          <p className="mt-1 text-sm text-[#64748b]">
+                            {currentPackageSummary
+                              ? `${currentPackageSummary.processLabel} · ${currentPackageSummary.quantityLabel}`
+                              : "Upload files or load a sample package."}
+                          </p>
+                        </div>
+                        <StatusBadge tone={hasUserProvidedIntakePackage ? "warn" : "neutral"} label={hasUserProvidedIntakePackage ? "review" : "empty"} />
+                      </div>
+                      <div className="mt-4 grid gap-2">
+                        {intakeFiles.length > 0 ? (
+                          intakeFiles.map((file) => (
+                            <div
+                              key={file.name}
+                              className="flex min-w-0 items-center justify-between gap-3 rounded-md border border-[#e5eaf2] bg-[#f8fafc] px-3 py-2 text-sm"
+                            >
+                              <span className="flex min-w-0 items-center gap-2">
+                                {file.kind === "DRAWING" ? (
+                                  <FileLock2 className="shrink-0 text-[#2563eb]" size={15} aria-hidden />
+                                ) : (
+                                  <FileSpreadsheet className="shrink-0 text-[#2563eb]" size={15} aria-hidden />
+                                )}
+                                <span className="truncate">{file.name}</span>
+                              </span>
+                              <span className="shrink-0 text-xs text-[#64748b]">{file.sizeLabel}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="rounded-md border border-dashed border-[#d8e0eb] bg-[#f8fafc] px-3 py-6 text-center text-sm text-[#64748b]">
+                            Package files will appear here.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-[#e5eaf2] bg-white p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-semibold text-[#0f172a]">Requirements</p>
+                        <span className="text-xs text-[#64748b]">{detectedRequirementChips.length} signals</span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {detectedRequirementChips.map((item) => (
+                          <span
+                            key={item}
+                            className="rounded-md border border-[#d8e0eb] bg-[#f8fafc] px-2 py-1 text-xs text-[#334155]"
+                          >
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="mt-4 grid gap-2">
+                        {intakeReadinessItems.map((item) => (
+                          <div key={item.label} className="flex items-center justify-between gap-3 text-sm">
+                            <span className="flex items-center gap-2">
+                              {item.complete ? (
+                                <CheckCircle2 className="text-[#047857]" size={15} aria-hidden />
+                              ) : (
+                                <AlertTriangle className="text-[#92400e]" size={15} aria-hidden />
+                              )}
+                              <span className="font-medium text-[#334155]">{item.label}</span>
+                            </span>
+                            <span className="text-xs text-[#64748b]">{item.detail}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {shouldShowIntakePackageReview && intakePackageWarnings.length > 0 ? (
+                        <div className="mt-4 grid gap-2">
+                          {intakePackageWarnings.slice(0, 3).map((warning) => (
+                            <div
+                              key={warning.title}
+                              className="rounded-md border border-[#fde68a] bg-[#fffbeb] p-2 text-xs text-[#92400e]"
+                            >
+                              <p className="font-medium text-[#78350f]">{warning.title}</p>
+                              <p className="mt-0.5 leading-5">{warning.detail}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {currentSourceLineItems.length > 0 ? (
+                <section className="min-w-0 overflow-hidden rounded-lg border border-[#e5eaf2] bg-white shadow-[0_14px_36px_rgba(15,23,42,0.07)]">
+                  <div className="flex flex-col gap-1 border-b border-[#e5eaf2] p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-semibold text-[#0f172a]">Line-item extraction</p>
+                      <p className="text-sm text-[#64748b]">Parsed manufacturing and review gates from the package.</p>
+                    </div>
+                    <StatusBadge tone="warn" label="buyer review required" />
+                  </div>
+                  <div className="grid gap-3 p-3 sm:hidden">
+                    {currentSourceLineItems.map((item) => (
+                      <div key={item.partNumber} className="rounded-lg border border-[#e5eaf2] bg-[#f8fafc] p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-medium">{item.partNumber}</p>
+                            <p className="mt-1 text-sm text-[#64748b]">{item.description}</p>
+                          </div>
+                          <StatusBadge tone={lineItemTone(item.status)} label={item.status} />
+                        </div>
+                        <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-[#64748b]">
+                          <div>
+                            <dt className="text-[#94a3b8]">Process</dt>
+                            <dd className="font-medium text-[#0f172a]">{processLabels[item.process]}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[#94a3b8]">Qty</dt>
+                            <dd className="font-medium text-[#0f172a]">{item.quantity}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[#94a3b8]">Material</dt>
+                            <dd className="font-medium text-[#0f172a]">{item.material}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-[#94a3b8]">Control</dt>
+                            <dd className="font-medium text-[#0f172a]">
+                              {item.classification.replaceAll("_", " ").toLowerCase()}
+                            </dd>
+                          </div>
+                        </dl>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="hidden overflow-x-auto sm:block">
+                    <table className="min-w-[760px] text-left text-sm">
+                      <thead className="bg-[#f8fafc] text-[#64748b]">
+                        <tr className="border-b border-[#e5eaf2]">
+                          <th className="py-3 pr-4 pl-4 font-medium">Part</th>
+                          <th className="py-3 pr-4 font-medium">Process</th>
+                          <th className="py-3 pr-4 font-medium">Material</th>
+                          <th className="py-3 pr-4 font-medium">Qty</th>
+                          <th className="py-3 pr-4 font-medium">Control</th>
+                          <th className="py-3 pr-4 font-medium">Gate</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {currentSourceLineItems.map((item) => (
+                          <tr key={item.partNumber} className="border-b border-[#e5eaf2] last:border-0">
+                            <td className="py-3 pr-4 pl-4">
+                              <p className="font-medium">{item.partNumber}</p>
+                              <p className="text-xs text-[#64748b]">{item.description}</p>
+                            </td>
+                            <td className="py-3 pr-4">{processLabels[item.process]}</td>
+                            <td className="py-3 pr-4">{item.material}</td>
+                            <td className="py-3 pr-4">{item.quantity}</td>
+                            <td className="py-3 pr-4">{item.classification.replaceAll("_", " ").toLowerCase()}</td>
+                            <td className="py-3 pr-4">
+                              <StatusBadge tone={lineItemTone(item.status)} label={item.status} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              ) : null}
+
+              <section className="min-w-0 overflow-hidden rounded-lg border border-[#e5eaf2] bg-white shadow-[0_14px_36px_rgba(15,23,42,0.07)]">
+                <div className="flex flex-col gap-3 border-b border-[#e5eaf2] p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-semibold text-[#0f172a]">Qualified supplier shortlist</p>
+                    <p className="text-sm text-[#64748b]">Ranked facility matches with access-state guardrails.</p>
+                  </div>
+                  <button
+                    className="inline-flex items-center justify-center rounded-md border border-[#d8e0eb] bg-[#f8fafc] px-3 py-2 text-sm font-medium text-[#334155] hover:border-[#2563eb]"
+                    onClick={() => setActiveTab("qualification")}
+                    type="button"
+                  >
+                    View matching
+                  </button>
+                </div>
+                <div className="grid gap-3 p-3 md:hidden">
+                  {shortlistMatches.map((match) => (
+                    <div key={match.id} className="rounded-lg border border-[#e5eaf2] bg-[#f8fafc] p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-medium text-[#0f172a]">{organizationName(data, match.supplierOrgId)}</p>
+                          <p className="mt-1 text-xs text-[#64748b]">{facilityName(data, match.facilityId)}</p>
+                        </div>
+                        <StatusBadge
+                          tone={statusTone[match.eligibilityStatus]}
+                          label={match.eligibilityStatus.replaceAll("_", " ").toLowerCase()}
+                        />
+                      </div>
+                      <p className="mt-3 text-sm text-[#64748b]">
+                        {match.score} score · {leadTimeEstimate(match.supplierOrgId)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div className="hidden overflow-x-auto md:block">
+                  <table className="min-w-[720px] text-left text-sm">
+                    <thead className="bg-[#f8fafc] text-[#64748b]">
+                      <tr className="border-b border-[#e5eaf2]">
+                        <th className="py-3 pr-4 pl-4 font-medium">Supplier</th>
+                        <th className="py-3 pr-4 font-medium">Facility</th>
+                        <th className="py-3 pr-4 font-medium">Score</th>
+                        <th className="py-3 pr-4 font-medium">Lead Time</th>
+                        <th className="py-3 pr-4 font-medium">Access State</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shortlistMatches.map((match) => (
+                        <tr key={match.id} className="border-b border-[#e5eaf2] last:border-0">
+                          <td className="py-3 pr-4 pl-4 font-medium">{organizationName(data, match.supplierOrgId)}</td>
+                          <td className="py-3 pr-4 text-[#64748b]">{facilityName(data, match.facilityId)}</td>
+                          <td className="py-3 pr-4 text-2xl font-semibold text-[#0f172a]">{match.score}</td>
+                          <td className="py-3 pr-4 text-[#64748b]">{leadTimeEstimate(match.supplierOrgId)}</td>
+                          <td className="py-3 pr-4">
+                            <StatusBadge
+                              tone={statusTone[match.eligibilityStatus]}
+                              label={match.eligibilityStatus.replaceAll("_", " ").toLowerCase()}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+
+            <aside className="grid min-w-0 gap-5 xl:sticky xl:top-24 xl:self-start">
+              <section className="rounded-lg border border-[#e5eaf2] bg-white p-4 shadow-[0_14px_36px_rgba(15,23,42,0.07)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Route size={18} aria-hidden />
+                    <h2 className="font-semibold">RFQ workflow</h2>
+                  </div>
+                  <span className="text-sm font-semibold text-[#2563eb]">{stageProgressPercent}%</span>
+                </div>
+                <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#e2e8f0]">
+                  <div className="h-full rounded-full bg-[#2563eb]" style={{ width: `${stageProgressPercent}%` }} />
+                </div>
+                <div className="mt-4 grid gap-2">
+                  {intakeStages.map((stage, index) => {
+                    const isActive = index === activeStageIndex;
+                    const isComplete = index < activeStageIndex;
+                    return (
+                      <div
+                        key={stage.id}
+                        className={`flex items-start gap-3 rounded-md border p-3 ${
+                          isActive
+                            ? "border-[#bfdbfe] bg-[#eff6ff]"
+                            : isComplete
+                              ? "border-[#a7f3d0] bg-[#ecfdf5]"
+                              : "border-[#e5eaf2] bg-[#f8fafc]"
+                        }`}
+                      >
+                        <span
+                          className={`mt-0.5 grid size-6 shrink-0 place-items-center rounded-full border text-xs font-semibold ${
+                            isComplete
+                              ? "border-[#047857] bg-[#047857] text-white"
+                              : isActive
+                                ? "border-[#2563eb] bg-[#2563eb] text-white"
+                                : "border-[#cbd5e1] text-[#64748b]"
+                          }`}
+                        >
+                          {isComplete ? <Check size={13} aria-hidden /> : index + 1}
+                        </span>
+                        <div>
+                          <p className="font-medium text-[#0f172a]">{stage.title}</p>
+                          <p className="mt-0.5 text-xs leading-5 text-[#64748b]">{stage.detail}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-[#e5eaf2] bg-white p-4 shadow-[0_14px_36px_rgba(15,23,42,0.07)]">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="font-semibold">Action queue</h2>
+                  <StatusBadge tone="warn" label={`${reviewQueue.length} review`} />
+                </div>
+                <div className="mt-4 grid gap-3">
+                  <button
+                    className="flex items-center justify-between gap-3 rounded-md border border-[#e5eaf2] bg-[#f8fafc] px-3 py-2 text-left text-sm hover:border-[#2563eb]"
+                    onClick={() => setActiveTab("review")}
+                    type="button"
+                  >
+                    <span>
+                      <span className="block font-medium text-[#0f172a]">Review evidence</span>
+                      <span className="text-xs text-[#64748b]">Resolve expired or pending documents.</span>
+                    </span>
+                    <BadgeCheck className="text-[#2563eb]" size={17} aria-hidden />
+                  </button>
+                  <button
+                    className="flex items-center justify-between gap-3 rounded-md border border-[#e5eaf2] bg-[#f8fafc] px-3 py-2 text-left text-sm hover:border-[#2563eb]"
+                    onClick={findQualifiedVendorsFromIntake}
+                    type="button"
+                    disabled={!hasUserProvidedIntakePackage}
+                  >
+                    <span>
+                      <span className="block font-medium text-[#0f172a]">Run qualification</span>
+                      <span className="text-xs text-[#64748b]">Create deterministic vendor results.</span>
+                    </span>
+                    <Search className="text-[#2563eb]" size={17} aria-hidden />
+                  </button>
+                  <button
+                    className="flex items-center justify-between gap-3 rounded-md border border-[#e5eaf2] bg-[#f8fafc] px-3 py-2 text-left text-sm hover:border-[#2563eb]"
+                    onClick={dispatchRFQ}
+                    type="button"
+                  >
+                    <span>
+                      <span className="block font-medium text-[#0f172a]">Release RFQ</span>
+                      <span className="text-xs text-[#64748b]">Send only to evidence-valid suppliers.</span>
+                    </span>
+                    <Send className="text-[#2563eb]" size={17} aria-hidden />
+                  </button>
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-[#e5eaf2] bg-white p-4 shadow-[0_14px_36px_rgba(15,23,42,0.07)]">
+                <h2 className="font-semibold">Access guardrails</h2>
+                <div className="mt-3 grid gap-2">
+                  <div className="flex items-center justify-between gap-3 rounded-md border border-[#a7f3d0] bg-[#ecfdf5] px-3 py-2 text-sm">
+                    <span className="font-medium text-[#047857]">Evidence valid</span>
+                    <span className="text-xs text-[#047857]">Invite allowed</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-md border border-[#fde68a] bg-[#fffbeb] px-3 py-2 text-sm">
+                    <span className="font-medium text-[#92400e]">Manual review required</span>
+                    <span className="text-xs text-[#92400e]">Hold release</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-md border border-[#fecaca] bg-[#fef2f2] px-3 py-2 text-sm">
+                    <span className="font-medium text-[#b91c1c]">Access suspended</span>
+                    <span className="text-xs text-[#b91c1c]">Blocked</span>
+                  </div>
+                </div>
+              </section>
+            </aside>
+          </section>
+
+          <section
+            id="suppliers"
+            className={
+              activeTab === "suppliers"
+                ? "min-w-0 rounded-2xl border border-[#e5eaf2] bg-[#ffffff] shadow-[0_12px_30px_rgba(15,23,42,0.06)]"
+                : "hidden"
+            }
+          >
             <SectionHeader
               icon={<Factory size={18} aria-hidden />}
               title="Supplier Directory"
               action={
-                <label className="flex min-w-0 items-center gap-2 rounded-md border border-[#24325f] px-3 py-2 text-sm">
+                <label className="flex min-w-0 items-center gap-2 rounded-md border border-[#d8e0eb] px-3 py-2 text-sm">
                   <Search size={16} aria-hidden />
                   <input
                     className="w-44 bg-transparent outline-none"
@@ -1809,8 +2009,8 @@ export function SovereignSourceApp() {
                     key={supplier.id}
                     className={`rounded-lg border p-3 text-left transition ${
                       supplier.id === activeSupplierId
-                        ? "border-[#2d6a4f] bg-[#eef7f0]"
-                        : "border-[#22305c] bg-[#101a3d] hover:border-[#9aa899]"
+                        ? "border-[#bfdbfe] bg-[#eff6ff]"
+                        : "border-[#e5eaf2] bg-[#f8fafc] hover:border-[#2563eb]"
                     }`}
                     onClick={() => setActiveSupplierId(supplier.id)}
                     type="button"
@@ -1818,7 +2018,7 @@ export function SovereignSourceApp() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="font-medium">{supplier.name}</p>
-                        <p className="text-sm text-[#94a3c7]">
+                        <p className="text-sm text-[#64748b]">
                           {supplier.cageCode} · {supplier.state}
                         </p>
                       </div>
@@ -1844,7 +2044,7 @@ export function SovereignSourceApp() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <h2 className="text-lg font-semibold">{activeSupplier?.name}</h2>
-                      <p className="text-sm text-[#94a3c7]">{activeProfile?.summary}</p>
+                      <p className="text-sm text-[#64748b]">{activeProfile?.summary}</p>
                     </div>
                     <StatusBadge
                       tone="neutral"
@@ -1870,8 +2070,8 @@ export function SovereignSourceApp() {
 
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-sm">
-                    <thead className="text-[#94a3c7]">
-                      <tr className="border-b border-[#22305c]">
+                    <thead className="text-[#64748b]">
+                      <tr className="border-b border-[#e5eaf2]">
                         <th className="py-2 pr-4 font-medium">Process</th>
                         <th className="py-2 pr-4 font-medium">Materials</th>
                         <th className="py-2 pr-4 font-medium">Tolerance</th>
@@ -1880,7 +2080,7 @@ export function SovereignSourceApp() {
                     </thead>
                     <tbody>
                       {activeCapabilities.map((capability) => (
-                        <tr key={capability.id} className="border-b border-[#22305c]">
+                        <tr key={capability.id} className="border-b border-[#e5eaf2]">
                           <td className="py-3 pr-4">{processLabels[capability.processType]}</td>
                           <td className="py-3 pr-4">{capability.materials.join(", ")}</td>
                           <td className="py-3 pr-4">+/-{capability.toleranceMinInches.toFixed(4)} in</td>
@@ -1914,31 +2114,31 @@ export function SovereignSourceApp() {
 
           <section
             id="evidence"
-            className={activeTab === "review" ? "min-w-0 rounded-lg border border-[#22305c] bg-[#0d1533]" : "hidden"}
+            className={activeTab === "review" ? "min-w-0 rounded-2xl border border-[#e5eaf2] bg-[#ffffff] shadow-[0_12px_30px_rgba(15,23,42,0.06)]" : "hidden"}
           >
             <SectionHeader icon={<BadgeCheck size={18} aria-hidden />} title="Evidence Review Queue" />
             <div className="grid gap-3 p-4">
               {reviewQueue.map((evidence) => (
                 <div
                   key={evidence.id}
-                  className="grid gap-3 rounded-lg border border-[#22305c] bg-[#101a3d] p-3 lg:grid-cols-[1fr_auto]"
+                  className="grid gap-3 rounded-lg border border-[#e5eaf2] bg-[#f8fafc] p-3 lg:grid-cols-[1fr_auto]"
                 >
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-medium">{evidenceLabels[evidence.type]}</p>
                       <StatusBadge tone={evidenceTone(evidence.status)} label={evidence.status.replaceAll("_", " ").toLowerCase()} />
-                      <span className="text-sm text-[#94a3c7]">{organizationName(data, evidence.supplierOrgId)}</span>
+                      <span className="text-sm text-[#64748b]">{organizationName(data, evidence.supplierOrgId)}</span>
                     </div>
-                    <p className="mt-1 text-sm text-[#5d675c]">{evidence.scopeText}</p>
-                    <p className="mt-1 text-xs text-[#7a8378]">
+                    <p className="mt-1 text-sm text-[#64748b]">{evidence.scopeText}</p>
+                    <p className="mt-1 text-xs text-[#64748b]">
                       Source: {evidence.source.replaceAll("_", " ").toLowerCase()} · Expires{" "}
                       {evidence.expirationDate ?? "not specified"}
                     </p>
                     <div className="mt-2 grid gap-1 text-xs">
-                      <p className={evidence.status === "EXPIRED" ? "text-[#8a2f25]" : "text-[#94a3c7]"}>
+                      <p className={evidence.status === "EXPIRED" ? "text-[#8a2f25]" : "text-[#64748b]"}>
                         {evidenceWarning(evidence)}
                       </p>
-                      {evidence.notes ? <p className="text-[#94a3c7]">Reviewer note: {evidence.notes}</p> : null}
+                      {evidence.notes ? <p className="text-[#64748b]">Reviewer note: {evidence.notes}</p> : null}
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -1962,7 +2162,7 @@ export function SovereignSourceApp() {
 
           <section
             id="work-packages"
-            className={activeTab === "review" ? "min-w-0 rounded-lg border border-[#22305c] bg-[#0d1533]" : "hidden"}
+            className={activeTab === "review" ? "min-w-0 rounded-2xl border border-[#e5eaf2] bg-[#ffffff] shadow-[0_12px_30px_rgba(15,23,42,0.06)]" : "hidden"}
           >
             <SectionHeader icon={<PackagePlus size={18} aria-hidden />} title="Work Package Builder" />
             <div className="grid gap-5 p-4 xl:grid-cols-[minmax(0,1fr)_440px]">
@@ -1972,8 +2172,8 @@ export function SovereignSourceApp() {
                     key={workPackage.id}
                     className={`rounded-lg border p-3 text-left ${
                       selectedWorkPackageId === workPackage.id
-                        ? "border-[#275d4a] bg-[#eef7f0]"
-                        : "border-[#22305c] bg-[#101a3d]"
+                        ? "border-[#bfdbfe] bg-[#eff6ff]"
+                        : "border-[#e5eaf2] bg-[#f8fafc]"
                     }`}
                     onClick={() => setSelectedWorkPackageId(workPackage.id)}
                     type="button"
@@ -1981,26 +2181,30 @@ export function SovereignSourceApp() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="font-medium">{workPackage.title}</p>
-                        <p className="text-sm text-[#94a3c7]">{workPackage.description}</p>
+                        <p className="text-sm text-[#64748b]">{workPackage.description}</p>
                       </div>
                       <StatusBadge tone={workPackage.status === "READY_TO_MATCH" ? "good" : "warn"} label={workPackage.status.replaceAll("_", " ").toLowerCase()} />
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-[#4d574f]">
-                      <span className="rounded-md bg-[#e9eef4] px-2 py-1">{workPackage.dataClassification}</span>
-                      <span className="rounded-md bg-[#f4efe5] px-2 py-1">
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-[#334155]">
+                      <span className="rounded-md border border-[#d8e0eb] bg-[#ffffff] px-2 py-1">
+                        {workPackage.dataClassification}
+                      </span>
+                      <span className="rounded-md border border-[#d8e0eb] bg-[#ffffff] px-2 py-1">
                         {workPackage.requiredProcesses.map((process) => processLabels[process]).join(", ")}
                       </span>
-                      <span className="rounded-md bg-[#ecf4e7] px-2 py-1">{workPackage.requiredMaterials.join(", ")}</span>
+                      <span className="rounded-md border border-[#d8e0eb] bg-[#ffffff] px-2 py-1">
+                        {workPackage.requiredMaterials.join(", ")}
+                      </span>
                     </div>
                   </button>
                 ))}
               </div>
 
-              <div className="grid gap-3 rounded-lg border border-[#22305c] bg-[#101a3d] p-3">
+              <div className="grid gap-3 rounded-lg border border-[#e5eaf2] bg-[#f8fafc] p-3">
                 <label className="grid gap-1 text-sm">
                   <span className="font-medium">Title</span>
                   <input
-                    className="rounded-md border border-[#24325f] bg-[#0a102b] px-3 py-2 text-[#eef3ff] outline-none"
+                    className="rounded-md border border-[#d8e0eb] bg-[#f1f5f9] px-3 py-2 text-[#0f172a] outline-none"
                     value={builder.title}
                     onChange={(event) => setBuilder({ ...builder, title: event.target.value })}
                   />
@@ -2009,7 +2213,7 @@ export function SovereignSourceApp() {
                   <label className="grid gap-1 text-sm">
                     <span className="font-medium">Classification</span>
                     <select
-                      className="rounded-md border border-[#24325f] bg-[#0a102b] px-3 py-2 text-[#eef3ff] outline-none"
+                      className="rounded-md border border-[#d8e0eb] bg-[#f1f5f9] px-3 py-2 text-[#0f172a] outline-none"
                       value={builder.classification}
                       onChange={(event) =>
                         setBuilder({ ...builder, classification: event.target.value as DataClassification })
@@ -2025,7 +2229,7 @@ export function SovereignSourceApp() {
                   <label className="grid gap-1 text-sm">
                     <span className="font-medium">Process</span>
                     <select
-                      className="rounded-md border border-[#24325f] bg-[#0a102b] px-3 py-2 text-[#eef3ff] outline-none"
+                      className="rounded-md border border-[#d8e0eb] bg-[#f1f5f9] px-3 py-2 text-[#0f172a] outline-none"
                       value={builder.process}
                       onChange={(event) => setBuilder({ ...builder, process: event.target.value as ProcessType })}
                     >
@@ -2041,7 +2245,7 @@ export function SovereignSourceApp() {
                   <label className="grid gap-1 text-sm">
                     <span className="font-medium">Material</span>
                     <select
-                      className="rounded-md border border-[#24325f] bg-[#0a102b] px-3 py-2 text-[#eef3ff] outline-none"
+                      className="rounded-md border border-[#d8e0eb] bg-[#f1f5f9] px-3 py-2 text-[#0f172a] outline-none"
                       value={builder.material}
                       onChange={(event) => setBuilder({ ...builder, material: event.target.value })}
                     >
@@ -2053,7 +2257,7 @@ export function SovereignSourceApp() {
                   <label className="grid gap-1 text-sm">
                     <span className="font-medium">Tolerance</span>
                     <input
-                      className="rounded-md border border-[#24325f] bg-[#0a102b] px-3 py-2 text-[#eef3ff] outline-none"
+                      className="rounded-md border border-[#d8e0eb] bg-[#f1f5f9] px-3 py-2 text-[#0f172a] outline-none"
                       inputMode="decimal"
                       value={builder.tolerance}
                       onChange={(event) => setBuilder({ ...builder, tolerance: event.target.value })}
@@ -2063,7 +2267,7 @@ export function SovereignSourceApp() {
                 <label className="grid gap-1 text-sm">
                   <span className="font-medium">Quantity</span>
                   <input
-                    className="rounded-md border border-[#24325f] bg-[#0a102b] px-3 py-2 text-[#eef3ff] outline-none"
+                    className="rounded-md border border-[#d8e0eb] bg-[#f1f5f9] px-3 py-2 text-[#0f172a] outline-none"
                     inputMode="numeric"
                     value={builder.quantity}
                     onChange={(event) => setBuilder({ ...builder, quantity: event.target.value })}
@@ -2103,7 +2307,7 @@ export function SovereignSourceApp() {
 
           <section
             id="matching"
-            className={activeTab === "qualification" ? "min-w-0 rounded-lg border border-[#22305c] bg-[#0d1533]" : "hidden"}
+            className={activeTab === "qualification" ? "min-w-0 rounded-2xl border border-[#e5eaf2] bg-[#ffffff] shadow-[0_12px_30px_rgba(15,23,42,0.06)]" : "hidden"}
           >
             <SectionHeader
               icon={<Search size={18} aria-hidden />}
@@ -2121,8 +2325,8 @@ export function SovereignSourceApp() {
                     key={filter}
                     className={`shrink-0 rounded-md border px-3 py-2 text-sm ${
                       matchFilter === filter
-                        ? "border-[#9b3cff] bg-[#9b3cff] text-white"
-                        : "border-[#24325f] bg-[#101a3d] text-[#d9e4ff]"
+                        ? "border-[#2563eb] bg-[#2563eb] text-white"
+                        : "border-[#d8e0eb] bg-[#f8fafc] text-[#334155]"
                     }`}
                     onClick={() => setMatchFilter(filter)}
                     type="button"
@@ -2136,11 +2340,11 @@ export function SovereignSourceApp() {
                 {filteredMatches.map((match) => {
                   const selected = selectedInviteSuppliers.includes(match.supplierOrgId);
                   return (
-                    <div key={match.id} className="rounded-lg border border-[#22305c] bg-[#101a3d] p-3">
+                    <div key={match.id} className="rounded-lg border border-[#e5eaf2] bg-[#f8fafc] p-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="font-medium">{organizationName(data, match.supplierOrgId)}</p>
-                          <p className="mt-1 text-xs text-[#94a3c7]">{facilityName(data, match.facilityId)}</p>
+                          <p className="mt-1 text-xs text-[#64748b]">{facilityName(data, match.facilityId)}</p>
                         </div>
                         <p className="shrink-0 text-2xl font-semibold">{match.score}</p>
                       </div>
@@ -2150,10 +2354,10 @@ export function SovereignSourceApp() {
                           label={match.eligibilityStatus.replaceAll("_", " ").toLowerCase()}
                         />
                       </div>
-                      <p className="mt-3 text-sm text-[#d9e4ff]">
+                      <p className="mt-3 text-sm text-[#334155]">
                         {match.reasons[0] ?? "Facility capability reviewed."}
                       </p>
-                      <p className="mt-1 text-xs text-[#94a3c7]">
+                      <p className="mt-1 text-xs text-[#64748b]">
                         {match.blockers[0] ??
                           (match.eligibilityStatus === "ELIGIBLE"
                             ? "Evidence valid for controlled RFQ routing."
@@ -2162,8 +2366,8 @@ export function SovereignSourceApp() {
                       <label
                         className={`mt-3 flex items-center justify-between rounded-md border px-3 py-2 text-sm ${
                           selected
-                            ? "border-[#9b3cff] bg-[#121b3f] text-white"
-                            : "border-[#24325f] bg-[#101a3d] text-[#d9e4ff]"
+                            ? "border-[#2563eb] bg-[#eff6ff] text-[#2563eb]"
+                            : "border-[#d8e0eb] bg-[#f8fafc] text-[#334155]"
                         }`}
                       >
                         <span>{match.eligibilityStatus === "ELIGIBLE" ? "Include in RFQ release" : "Flag for review"}</span>
@@ -2178,10 +2382,10 @@ export function SovereignSourceApp() {
                 })}
               </div>
 
-              <div className="hidden overflow-x-auto rounded-lg border border-[#22305c] md:block">
+              <div className="hidden overflow-x-auto rounded-lg border border-[#e5eaf2] md:block">
                 <table className="min-w-[940px] text-left text-sm">
-                  <thead className="bg-[#101a3d] text-[#94a3c7]">
-                    <tr className="border-b border-[#22305c]">
+                  <thead className="bg-[#f8fafc] text-[#64748b]">
+                    <tr className="border-b border-[#e5eaf2]">
                       <th className="py-2 pr-4 pl-3 font-medium">Supplier</th>
                       <th className="py-2 pr-4 font-medium">Capability</th>
                       <th className="py-2 pr-4 font-medium">Evidence / Access</th>
@@ -2193,14 +2397,14 @@ export function SovereignSourceApp() {
                     {filteredMatches.map((match) => {
                       const selected = selectedInviteSuppliers.includes(match.supplierOrgId);
                       return (
-                        <tr key={match.id} className="border-b border-[#22305c] last:border-0">
+                        <tr key={match.id} className="border-b border-[#e5eaf2] last:border-0">
                           <td className="py-3 pr-4 pl-3 align-top">
                             <p className="font-medium">{organizationName(data, match.supplierOrgId)}</p>
-                            <p className="mt-1 text-xs text-[#94a3c7]">{facilityName(data, match.facilityId)}</p>
+                            <p className="mt-1 text-xs text-[#64748b]">{facilityName(data, match.facilityId)}</p>
                           </td>
                           <td className="max-w-[340px] py-3 pr-4 align-top">
                             <p>{match.reasons[0] ?? "Facility capability reviewed."}</p>
-                            <p className="mt-1 text-xs text-[#94a3c7]">
+                            <p className="mt-1 text-xs text-[#64748b]">
                               {match.capacitySignals[0] ?? leadTimeEstimate(match.supplierOrgId)}
                             </p>
                           </td>
@@ -2209,7 +2413,7 @@ export function SovereignSourceApp() {
                               tone={statusTone[match.eligibilityStatus]}
                               label={match.eligibilityStatus.replaceAll("_", " ").toLowerCase()}
                             />
-                            <p className="mt-2 text-xs text-[#94a3c7]">
+                            <p className="mt-2 text-xs text-[#64748b]">
                               {match.blockers[0] ??
                                 (match.eligibilityStatus === "ELIGIBLE"
                                   ? "Evidence valid for controlled RFQ routing."
@@ -2220,7 +2424,7 @@ export function SovereignSourceApp() {
                           <td className="py-3 pr-3 align-top">
                             <label
                               className={`flex items-center gap-2 text-sm ${
-                                selected ? "text-white" : "text-[#d9e4ff]"
+                                selected ? "text-[#2563eb]" : "text-[#334155]"
                               }`}
                             >
                               <input
@@ -2242,7 +2446,7 @@ export function SovereignSourceApp() {
 
           <section
             id="dispatch"
-            className={activeTab === "rfq" ? "min-w-0 rounded-lg border border-[#22305c] bg-[#0d1533]" : "hidden"}
+            className={activeTab === "rfq" ? "min-w-0 rounded-2xl border border-[#e5eaf2] bg-[#ffffff] shadow-[0_12px_30px_rgba(15,23,42,0.06)]" : "hidden"}
           >
             <SectionHeader
               icon={<Send size={18} aria-hidden />}
@@ -2257,7 +2461,7 @@ export function SovereignSourceApp() {
               {data.rfqInvites.map((invite) => (
                 <div
                   key={invite.id}
-                  className="grid gap-3 rounded-lg border border-[#22305c] bg-[#101a3d] p-3 lg:grid-cols-[1fr_auto]"
+                  className="grid gap-3 rounded-lg border border-[#e5eaf2] bg-[#f8fafc] p-3 lg:grid-cols-[1fr_auto]"
                 >
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -2265,10 +2469,10 @@ export function SovereignSourceApp() {
                       <StatusBadge tone={invite.accessStatus === "RELEASED" ? "good" : "bad"} label={invite.accessStatus.replaceAll("_", " ").toLowerCase()} />
                       <StatusBadge tone="neutral" label={invite.responseStatus.replaceAll("_", " ").toLowerCase()} />
                     </div>
-                    <p className="mt-1 text-sm text-[#94a3c7]">
+                    <p className="mt-1 text-sm text-[#64748b]">
                       {workPackageName(data, invite.workPackageId)} · expires {formatDate(invite.expiresAt)}
                     </p>
-                    <p className="mt-1 text-xs text-[#94a3c7]">{inviteResponseDetail(invite)}</p>
+                    <p className="mt-1 text-xs text-[#64748b]">{inviteResponseDetail(invite)}</p>
                   </div>
                   <IconButton label="Revoke invite" onClick={() => revokeInvite(invite.id)}>
                     <LockKeyhole size={16} aria-hidden />
@@ -2280,20 +2484,20 @@ export function SovereignSourceApp() {
 
           <section
             id="portal"
-            className={activeTab === "rfq" ? "min-w-0 rounded-lg border border-[#22305c] bg-[#0d1533]" : "hidden"}
+            className={activeTab === "rfq" ? "min-w-0 rounded-2xl border border-[#e5eaf2] bg-[#ffffff] shadow-[0_12px_30px_rgba(15,23,42,0.06)]" : "hidden"}
           >
             <SectionHeader icon={<UserCheck size={18} aria-hidden />} title="Supplier RFQ Portal" />
             <div className="grid gap-4 p-4">
-              <div className="rounded-lg border border-[#22305c] bg-[#101a3d] p-3 text-sm">
+              <div className="rounded-lg border border-[#e5eaf2] bg-[#f8fafc] p-3 text-sm">
                 <div className="flex items-start gap-2">
-                  <FileLock2 className="mt-0.5 text-[#315c4a]" size={18} aria-hidden />
+                  <FileLock2 className="mt-0.5 text-[#2563eb]" size={18} aria-hidden />
                   <p>{accessDecision}</p>
                 </div>
               </div>
               {portalInvites.map((invite) => (
                 <div
                   key={invite.id}
-                  className="grid gap-3 rounded-lg border border-[#22305c] bg-[#101a3d] p-3 lg:grid-cols-[1fr_auto]"
+                  className="grid gap-3 rounded-lg border border-[#e5eaf2] bg-[#f8fafc] p-3 lg:grid-cols-[1fr_auto]"
                 >
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -2301,10 +2505,10 @@ export function SovereignSourceApp() {
                       <StatusBadge tone={invite.accessStatus === "RELEASED" ? "good" : "bad"} label={invite.accessStatus.replaceAll("_", " ").toLowerCase()} />
                       <StatusBadge tone="neutral" label={invite.responseStatus.replaceAll("_", " ").toLowerCase()} />
                     </div>
-                    <p className="mt-1 text-sm text-[#94a3c7]">
+                    <p className="mt-1 text-sm text-[#64748b]">
                       Data-room access expires {formatDate(invite.expiresAt)}. Blueprint files are not emailed.
                     </p>
-                    <p className="mt-1 text-xs text-[#94a3c7]">{inviteResponseDetail(invite)}</p>
+                    <p className="mt-1 text-xs text-[#64748b]">{inviteResponseDetail(invite)}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                     <IconButton label="View data room" onClick={() => openDataRoom(invite)}>
@@ -2327,13 +2531,13 @@ export function SovereignSourceApp() {
 
           <section
             id="audit"
-            className={activeTab === "audit" ? "min-w-0 rounded-lg border border-[#22305c] bg-[#0d1533]" : "hidden"}
+            className={activeTab === "audit" ? "min-w-0 rounded-2xl border border-[#e5eaf2] bg-[#ffffff] shadow-[0_12px_30px_rgba(15,23,42,0.06)]" : "hidden"}
           >
             <SectionHeader
               icon={<History size={18} aria-hidden />}
               title="Audit Log"
               action={
-                <label className="flex w-full min-w-0 items-center gap-2 rounded-md border border-[#24325f] px-3 py-2 text-sm sm:w-auto">
+                <label className="flex w-full min-w-0 items-center gap-2 rounded-md border border-[#d8e0eb] px-3 py-2 text-sm sm:w-auto">
                   <Filter size={16} aria-hidden />
                   <input
                     className="w-full bg-transparent outline-none sm:w-44"
@@ -2344,39 +2548,39 @@ export function SovereignSourceApp() {
                 </label>
               }
             />
-            <div className="grid gap-3 border-b border-[#22305c] p-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+            <div className="grid gap-3 border-b border-[#e5eaf2] p-4 lg:grid-cols-[minmax(0,1fr)_420px]">
               <div>
                 <p className="font-medium">Audit Export</p>
-                <p className="mt-1 text-sm text-[#94a3c7]">
+                <p className="mt-1 text-sm text-[#64748b]">
                   This view is formatted for a buyer review: who saw what, when, and why.
                 </p>
               </div>
               <a
-                className="inline-flex items-center justify-center gap-2 rounded-md border border-[#9b3cff] bg-[#9b3cff] px-3 py-2 text-sm font-medium text-white hover:bg-[#ad5cff]"
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-[#2563eb] bg-[#2563eb] px-3 py-2 text-sm font-medium text-white hover:bg-[#1d4ed8]"
                 download="sovereign-source-audit-export.txt"
                 href={`data:text/plain;charset=utf-8,${encodeURIComponent(auditExportText)}`}
               >
                 <Download size={16} aria-hidden />
                 Download Audit Export
               </a>
-              <pre className="max-h-48 min-w-0 max-w-full overflow-auto whitespace-pre-wrap break-words rounded-lg border border-[#22305c] bg-[#101a3d] p-3 text-xs text-[#d9e4ff] lg:col-span-2">
+              <pre className="max-h-48 min-w-0 max-w-full overflow-auto whitespace-pre-wrap break-words rounded-lg border border-[#e5eaf2] bg-[#f8fafc] p-3 text-xs text-[#334155] lg:col-span-2">
                 {auditExportText}
               </pre>
             </div>
             <div className="grid gap-3 p-3 md:hidden">
               {auditLogs.map((log) => (
-                <div key={log.id} className="min-w-0 rounded-lg border border-[#22305c] bg-[#101a3d] p-3 text-sm">
+                <div key={log.id} className="min-w-0 rounded-lg border border-[#e5eaf2] bg-[#f8fafc] p-3 text-sm">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-medium">{describeAuditAction(log.action)}</p>
-                      <p className="mt-1 text-xs text-[#94a3c7]">{formatDateTime(log.createdAt)}</p>
+                      <p className="mt-1 text-xs text-[#64748b]">{formatDateTime(log.createdAt)}</p>
                     </div>
                     <StatusBadge tone="neutral" label={log.entityType.toLowerCase()} />
                   </div>
-                  <p className="mt-3 break-words text-xs text-[#94a3c7]">
+                  <p className="mt-3 break-words text-xs text-[#64748b]">
                     {organizationName(data, String(log.orgId ?? ""))} · {log.entityId}
                   </p>
-                  <pre className="mt-2 max-h-24 min-w-0 max-w-full overflow-auto whitespace-pre-wrap break-all rounded-md bg-[#0a102b] p-2 text-xs text-[#94a3c7]">
+                  <pre className="mt-2 max-h-24 min-w-0 max-w-full overflow-auto whitespace-pre-wrap break-all rounded-md bg-[#f1f5f9] p-2 text-xs text-[#64748b]">
                     {JSON.stringify(log.metadataJson)}
                   </pre>
                 </div>
@@ -2384,8 +2588,8 @@ export function SovereignSourceApp() {
             </div>
             <div className="hidden overflow-x-auto p-4 md:block">
               <table className="min-w-[900px] text-left text-sm">
-                <thead className="text-[#94a3c7]">
-                  <tr className="border-b border-[#22305c]">
+                <thead className="text-[#64748b]">
+                  <tr className="border-b border-[#e5eaf2]">
                     <th className="py-2 pr-4 font-medium">Time</th>
                     <th className="py-2 pr-4 font-medium">Action</th>
                     <th className="py-2 pr-4 font-medium">Entity</th>
@@ -2395,14 +2599,14 @@ export function SovereignSourceApp() {
                 </thead>
                 <tbody>
                   {auditLogs.map((log) => (
-                    <tr key={log.id} className="border-b border-[#22305c]">
+                    <tr key={log.id} className="border-b border-[#e5eaf2]">
                       <td className="py-3 pr-4 whitespace-nowrap">{formatDateTime(log.createdAt)}</td>
                       <td className="py-3 pr-4">{describeAuditAction(log.action)}</td>
                       <td className="py-3 pr-4">
                         {log.entityType} · {log.entityId}
                       </td>
                       <td className="py-3 pr-4">{organizationName(data, String(log.orgId ?? ""))}</td>
-                      <td className="max-w-[360px] py-3 pr-4 text-xs text-[#94a3c7]">
+                      <td className="max-w-[360px] py-3 pr-4 text-xs text-[#64748b]">
                         {JSON.stringify(log.metadataJson)}
                       </td>
                     </tr>
@@ -2416,12 +2620,12 @@ export function SovereignSourceApp() {
       </main>
       {dataRoomInvite ? (
         <div className="fixed inset-0 z-50 grid place-items-end bg-[#111814]/60 p-2 sm:place-items-center sm:p-4">
-          <div className="max-h-[92dvh] w-full max-w-3xl overflow-auto rounded-t-lg border border-[#22305c] bg-[#0d1533] shadow-xl sm:rounded-lg">
-            <div className="flex items-start justify-between gap-4 border-b border-[#22305c] p-3 sm:p-4">
+          <div className="max-h-[92dvh] w-full max-w-3xl overflow-auto rounded-t-lg border border-[#e5eaf2] bg-[#ffffff] shadow-xl sm:rounded-lg">
+            <div className="flex items-start justify-between gap-4 border-b border-[#e5eaf2] p-3 sm:p-4">
               <div>
-                <p className="text-sm text-[#94a3c7]">Secure data room</p>
+                <p className="text-sm text-[#64748b]">Secure data room</p>
                 <h2 className="text-lg font-semibold">{workPackageName(data, dataRoomInvite.workPackageId)}</h2>
-                <p className="mt-1 text-sm text-[#94a3c7]">
+                <p className="mt-1 text-sm text-[#64748b]">
                   Released to {organizationName(data, dataRoomInvite.supplierOrgId)} until {formatDate(dataRoomInvite.expiresAt)}.
                 </p>
               </div>
@@ -2436,7 +2640,7 @@ export function SovereignSourceApp() {
               {dataRoomDocuments.map((document) => (
                 <div
                   key={document.id}
-                  className="grid gap-3 rounded-lg border border-[#22305c] bg-[#101a3d] p-3 sm:grid-cols-[1fr_auto]"
+                  className="grid gap-3 rounded-lg border border-[#e5eaf2] bg-[#f8fafc] p-3 sm:grid-cols-[1fr_auto]"
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -2444,7 +2648,7 @@ export function SovereignSourceApp() {
                       <p className="min-w-0 break-words font-medium">{document.filename}</p>
                       <StatusBadge tone="neutral" label={document.classification.replaceAll("_", " ").toLowerCase()} />
                     </div>
-                    <p className="mt-1 text-xs text-[#94a3c7]">
+                    <p className="mt-1 text-xs text-[#64748b]">
                       {formatBytes(document.sizeBytes)} · {document.checksum} · watermark metadata placeholder enabled
                     </p>
                   </div>
@@ -2497,12 +2701,12 @@ function SectionHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-3 border-b border-[#22305c] px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+    <div className="flex flex-col gap-3 border-b border-[#e5eaf2] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 items-center gap-2">
-        <span className="grid size-8 shrink-0 place-items-center rounded-md border border-[#24325f] bg-[#101a3d] text-[#36d7ff]">
+        <span className="grid size-8 shrink-0 place-items-center rounded-md border border-[#d8e0eb] bg-[#f8fafc] text-[#2563eb]">
           {icon}
         </span>
-        <h2 className="truncate text-base font-semibold">{title}</h2>
+        <h2 className="truncate text-base font-semibold text-[#0f172a]">{title}</h2>
       </div>
       {action ? <div className="w-full sm:w-auto">{action}</div> : null}
     </div>
@@ -2521,25 +2725,25 @@ function MetricCard({
   detail: string;
 }) {
   return (
-    <div className="rounded-lg border border-[#22305c] bg-[#0d1533] p-3 shadow-[0_12px_36px_rgba(0,0,0,0.22)] sm:p-4">
+    <div className="rounded-2xl border border-[#e5eaf2] bg-[#ffffff] p-3 shadow-[0_12px_30px_rgba(15,23,42,0.06)] sm:p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm text-[#94a3c7]">{label}</p>
+          <p className="text-sm text-[#64748b]">{label}</p>
           <p className="mt-2 text-2xl font-semibold sm:text-3xl">{value}</p>
         </div>
-        <span className="grid size-9 shrink-0 place-items-center rounded-md border border-[#36d7ff] bg-[#101a3d] text-[#36d7ff]">
+        <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-[#bfdbfe] bg-[#eff6ff] text-[#2563eb]">
           {icon}
         </span>
       </div>
-      <p className="mt-3 text-sm text-[#94a3c7]">{detail}</p>
+      <p className="mt-3 text-sm text-[#64748b]">{detail}</p>
     </div>
   );
 }
 
 function DetailBlock({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-[#22305c] bg-[#0d1533] p-3 text-sm text-[#94a3c7]">
-      <p className="mb-2 font-medium text-[#eef3ff]">{title}</p>
+    <div className="rounded-xl border border-[#e5eaf2] bg-[#ffffff] p-3 text-sm text-[#64748b]">
+      <p className="mb-2 font-medium text-[#0f172a]">{title}</p>
       <div className="grid gap-1">{children}</div>
     </div>
   );
@@ -2562,10 +2766,10 @@ function StatusBadge({
   label: string;
 }) {
   const toneClass = {
-    good: "border-[#1f7f5c] bg-[#0f2a33] text-[#6ee7b7]",
-    warn: "border-[#7a5d18] bg-[#2b2436] text-[#f7d778]",
-    bad: "border-[#7f3144] bg-[#2b1428] text-[#ff9a9a]",
-    neutral: "border-[#24325f] bg-[#101a3d] text-[#9ecbff]",
+    good: "border-[#a7f3d0] bg-[#ecfdf5] text-[#047857]",
+    warn: "border-[#fde68a] bg-[#fffbeb] text-[#92400e]",
+    bad: "border-[#fecaca] bg-[#fef2f2] text-[#b91c1c]",
+    neutral: "border-[#d8e0eb] bg-[#f8fafc] text-[#334155]",
   }[tone];
 
   return (
@@ -2588,7 +2792,7 @@ function IconButton({
 }) {
   return (
     <button
-      className="grid size-9 shrink-0 place-items-center rounded-md border border-[#24325f] bg-[#101a3d] text-[#d9e4ff] hover:border-[#36d7ff]"
+      className="grid size-9 shrink-0 place-items-center rounded-md border border-[#d8e0eb] bg-[#f8fafc] text-[#334155] hover:border-[#2563eb]"
       onClick={onClick}
       title={label}
       type="button"
@@ -2614,7 +2818,7 @@ function CommandButton({
 }) {
   return (
     <button
-      className={`inline-flex items-center justify-center gap-2 rounded-md border border-[#9b3cff] bg-[#9b3cff] px-3 py-2 text-sm font-semibold text-white hover:bg-[#ad5cff] disabled:cursor-not-allowed disabled:opacity-45 ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-md border border-[#2563eb] bg-[#2563eb] px-3 py-2 text-sm font-semibold text-white hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-45 ${className}`}
       disabled={disabled}
       onClick={onClick}
       type="button"
@@ -2691,36 +2895,6 @@ function leadTimeEstimate(supplierOrgId: string) {
     "sup-d": "94 day lead-time signal",
   };
   return estimates[supplierOrgId] ?? "lead-time signal pending";
-}
-
-function curationSignal(match: SupplierMatch) {
-  if (match.eligibilityStatus === "ELIGIBLE") {
-    return "Facility-level qualification complete.";
-  }
-  if (match.eligibilityStatus === "MANUAL_REVIEW") {
-    return "Facility evidence queued for reviewer approval.";
-  }
-  return "Curated network gate failed for this package.";
-}
-
-function firstOrderSignal(match: SupplierMatch) {
-  if (match.supplierOrgId === "sup-a") {
-    return "First-order monitoring: quality packet and response cadence tracked.";
-  }
-  if (match.eligibilityStatus === "MANUAL_REVIEW") {
-    return "First-order monitoring starts after evidence review.";
-  }
-  return "First-order monitoring unavailable while access is suspended.";
-}
-
-function humanSupportSignal(match: SupplierMatch) {
-  if (match.eligibilityStatus === "ELIGIBLE") {
-    return "Human support: release review before controlled data-room invite.";
-  }
-  if (match.eligibilityStatus === "MANUAL_REVIEW") {
-    return "Human support: reviewer must clear the exception.";
-  }
-  return "Human support: buyer can request remediation, not automatic release.";
 }
 
 function inferIntakeKind(fileName: string): IntakeMode {
@@ -2859,6 +3033,10 @@ function getIntakePackageWarnings(files: IntakeFile[]): IntakePackageWarning[] {
 
 function fileExtension(fileName: string) {
   return fileName.toLowerCase().split(".").pop() ?? "";
+}
+
+function isDrawingFile(fileName: string) {
+  return fileExtension(fileName) === "pdf";
 }
 
 function isFileDrag(event: DragEvent<HTMLElement>) {
