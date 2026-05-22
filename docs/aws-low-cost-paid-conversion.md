@@ -1,6 +1,6 @@
 # Low-Cost Paid-Conversion Architecture
 
-This plan keeps idle/minimal-use AWS spend under about $10/month by avoiding always-on compute and hourly networking resources. It is a deployment plan, not a deployment record; no AWS resources are created by this repo change.
+This plan keeps idle/minimal-use AWS spend under about $10/month by avoiding always-on compute and hourly networking resources. Terraform and a Lambda Function URL API are included under `infra/aws` and `serverless/sovereign-api`. Applying the Terraform creates AWS resources; building the repo alone does not.
 
 ## Cost Boundary
 
@@ -55,21 +55,23 @@ The main cost traps are not user sign-in or a few RFQs. The cost traps are alway
 
 ## Current Repo Coverage
 
-Implemented locally:
+Implemented in code:
 
 - Cognito Hosted UI URL builder and honest demo fallback.
 - Public request-access page and FastAPI `/access/request` capture endpoint.
 - Server-side audit events for quote-to-order workflow and access requests.
 - Quote-to-order backend with human final quote and mock payment gate.
 - Public trust page that avoids compliance certification claims.
+- Terraform for Cognito, DynamoDB on-demand, S3 signed document storage, Lambda Function URL, IAM, short-retention logs, and optional AWS Budget alerts.
+- Lambda Function URL API with Cognito JWT validation, role checks, tenant-scoped DynamoDB records, server-side matching, evidence review, work package classification approval, signed upload/download URLs, expiring/revocable invite tokens, supplier responses, and audit export.
 
-Still not deployed:
+Still not finished for a 10/10 paid pilot:
 
-- Real Cognito user pool, app client, domain, callback URLs, and hosted UI branding.
-- Server-side session validation and protected `/dashboard` access.
-- DynamoDB tenant/RBAC enforcement.
-- S3/R2 signed document storage.
-- Production audit retention and export.
+- Apply Terraform and configure Cloudflare Pages environment variables from Terraform outputs.
+- Create Cognito users with `custom:tenant_id` and role-group membership.
+- Replace the demo dashboard's client-side seed data with calls to the serverless API.
+- Add a real admin UI over the new API for tenant/user/supplier/evidence management.
+- Add a proper OAuth callback/token handling flow or Cloudflare middleware so `/dashboard` is not just a demo route.
 - CRM integration or notification workflow for access requests.
 
 ## Official Pricing References Checked

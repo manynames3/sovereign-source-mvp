@@ -11,17 +11,16 @@ const verifiedToday = [
   "Demo mode uses fake sourcing data and must not receive real controlled technical data.",
   "The metal quote backend writes server-side audit events for estimates, RFQs, reviews, quotes, approvals, payments, and access requests.",
   "Instant estimates are explicitly budgetary and require human/admin review before final quote, payment, or order creation.",
-  "The Cognito login URL builder is present, but a real user pool, app client, domain, and callbacks still need to be configured.",
+  "A low-idle AWS Terraform stack now defines Cognito, DynamoDB, private S3 storage, signed URLs, and a Lambda Function URL API.",
   "Mock payments are isolated from live payment processors until a real provider is wired and reviewed.",
 ];
 
 const productionRequired = [
-  "Create the Cognito user pool/app client and lock callback/logout URLs to production domains.",
-  "Validate sessions server-side and protect /dashboard routes before exposing non-demo data.",
-  "Move RBAC and tenant isolation to backend/database enforcement, not browser-only state.",
-  "Use signed S3/R2 document URLs with short expirations and server-side access decisions.",
-  "Persist audit logs server-side with retention, export, and admin review procedures.",
-  "Publish a control-backed security page after the controls are deployed and verified.",
+  "Apply the Terraform stack, create pilot users, and assign Cognito groups with tenant IDs.",
+  "Wire the deployed API URL and Cognito outputs into Cloudflare Pages environment variables.",
+  "Replace dashboard demo state with authenticated API calls before exposing non-demo data.",
+  "Validate production access procedures with signed document URLs and server-side audit exports.",
+  "Publish a control-backed security page only after the deployed controls are verified.",
 ];
 
 const claimsAvoided = [

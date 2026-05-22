@@ -58,7 +58,7 @@ const trustSignals = [
   "Deterministic match reasons",
   "Manual review required states",
   "Access suspended states",
-  "Server-side architecture plan",
+  "Server-side pilot API path",
   "No platform compliance certification claim",
 ];
 

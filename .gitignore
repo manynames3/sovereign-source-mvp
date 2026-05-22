@@ -18,6 +18,12 @@
 /.next/
 /out/
 /verification/
+/infra/aws/dist/
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
 
 # production
 /build

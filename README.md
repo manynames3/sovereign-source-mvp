@@ -336,6 +336,17 @@ Response shape:
 
 See `docs/aws-low-cost-paid-conversion.md` for the sub-$10/month minimal-use AWS architecture. The short version: use Cognito, Lambda Function URLs, DynamoDB on-demand, S3 signed URLs, and short-retention CloudWatch logs. Avoid ECS/Fargate, ALB/NLB, NAT gateways, RDS/Aurora, and other always-on resources until revenue or traffic justifies them.
 
+The repo includes deployable AWS infrastructure under `infra/aws` and a serverless API under `serverless/sovereign-api`.
+
+```bash
+pnpm serverless:build
+cd infra/aws
+terraform init
+terraform plan -var='budget_alert_email=you@example.com'
+```
+
+The serverless API adds production-shaped endpoints for Cognito JWT validation, tenant-scoped DynamoDB records, server-side matching, signed S3 document URLs, expiring/revocable RFQ invite tokens, supplier quote/decline/no-bid responses, and server-side audit export.
+
 ## Demo Flow
 
 1. Open the logged-in Upload Request workspace.

@@ -7,12 +7,10 @@ import {
   CheckCircle2,
   ClipboardList,
   Download,
-  ExternalLink,
   Eye,
   Factory,
   FileSpreadsheet,
   FileLock2,
-  FileText,
   Filter,
   Flag,
   Gavel,
@@ -242,8 +240,6 @@ const navItems: Array<{ label: string; href: string; Icon: LucideIcon }> = [
   { label: "Dispatch", href: "dispatch", Icon: Send },
   { label: "Supplier Portal", href: "portal", Icon: UserCheck },
   { label: "Audit", href: "audit", Icon: History },
-  { label: "Artifacts", href: "artifacts", Icon: FileText },
-  { label: "Pilot Scope", href: "pilot-scope", Icon: ShieldCheck },
 ];
 
 const demoRoles: Array<{ id: DemoRole; label: string; description: string }> = [
@@ -301,51 +297,6 @@ const walkthroughSteps = [
     target: "audit",
     detail: "The audit export answers who saw what, when, and why for evidence review, matching, dispatch, data-room access, response, and revocation.",
   },
-];
-
-const buyerArtifacts = [
-  {
-    title: "2-minute demo script",
-    href: "/artifacts/2-minute-demo-script.md",
-    detail: "Talk track for the controlled titanium bracket walkthrough.",
-  },
-  {
-    title: "One-page product brief",
-    href: "/artifacts/product-brief.md",
-    detail: "Buyer-facing positioning, target users, and MVP value.",
-  },
-  {
-    title: "Pilot proposal",
-    href: "/artifacts/pilot-proposal.md",
-    detail: "Supplier evidence graph plus controlled RFQ routing pilot scope.",
-  },
-  {
-    title: "Sample ROI claim",
-    href: "/artifacts/sample-roi-claim.md",
-    detail: "Conservative ROI framing around fewer wasted RFQs and lower data-release risk.",
-  },
-];
-
-const sellableArchitecture = [
-  "Real auth and RBAC",
-  "Persistent database with tenant isolation",
-  "Server-side matching and document-access checks",
-  "Object storage with signed URLs",
-  "Server-side audit log",
-  "Evidence files with expiration tracking",
-  "Invite tokens that expire and revoke server-side",
-  "Admin console for demo data, suppliers, reviewers, and buyer orgs",
-];
-
-const firstPilotScope = [
-  "Supplier directory",
-  "Evidence vault",
-  "Work package builder",
-  "Classification approval gate",
-  "Deterministic match results",
-  "Secure RFQ invite and data-room flow",
-  "Supplier response and no-bid flow",
-  "Exportable audit trail",
 ];
 
 function createInitialWorkspace(): WorkspaceState {
@@ -1789,42 +1740,6 @@ export function SovereignSourceApp() {
             </div>
           </section>
 
-          <section id="artifacts" className="rounded-lg border border-[#d9ded4] bg-white">
-            <SectionHeader icon={<FileText size={18} aria-hidden />} title="Buyer-Facing Artifacts" />
-            <div className="grid gap-3 p-4 lg:grid-cols-4">
-              {buyerArtifacts.map((artifact) => (
-                <a
-                  key={artifact.href}
-                  className="rounded-lg border border-[#dfe5da] bg-[#fbfcf8] p-3 hover:border-[#9aa899]"
-                  href={artifact.href}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="font-medium">{artifact.title}</p>
-                    <ExternalLink size={16} aria-hidden />
-                  </div>
-                  <p className="mt-2 text-sm text-[#667064]">{artifact.detail}</p>
-                </a>
-              ))}
-            </div>
-          </section>
-
-          <section id="pilot-scope" className="rounded-lg border border-[#d9ded4] bg-white">
-            <SectionHeader icon={<ShieldCheck size={18} aria-hidden />} title="Sellable Pilot Scope" />
-            <div className="grid gap-4 p-4 lg:grid-cols-2">
-              <DetailBlock title="Minimum Sellable Architecture">
-                {sellableArchitecture.map((item) => (
-                  <p key={item}>{item}</p>
-                ))}
-              </DetailBlock>
-              <DetailBlock title="First Paid Pilot Product Scope">
-                {firstPilotScope.map((item) => (
-                  <p key={item}>{item}</p>
-                ))}
-              </DetailBlock>
-            </div>
-          </section>
         </div>
       </main>
       {dataRoomInvite ? (
