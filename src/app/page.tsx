@@ -1,5 +1,6 @@
-import { SovereignSourceApp } from "@/components/sovereign-source-app";
+import { LandingPage } from "@/components/landing-page";
+import { buildCognitoLogin } from "@/lib/cognito";
 
 export default function Home() {
-  return <SovereignSourceApp />;
+  return <LandingPage cognitoLogin={buildCognitoLogin()} />;
 }

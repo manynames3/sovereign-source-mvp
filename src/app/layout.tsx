@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sovereign Source MVP",
-  description: "Evidence-backed supplier qualification and secure RFQ routing.",
+  title: "Sovereign Source",
+  description:
+    "Curated defense supplier qualification and secure RFQ routing for controlled manufacturing work.",
 };
 
 export default function RootLayout({

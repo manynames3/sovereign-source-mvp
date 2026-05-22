@@ -24,7 +24,7 @@ pnpm install
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The demo UI runs against typed seed data in memory so the product walkthrough works without a database.
+Open [http://localhost:3000](http://localhost:3000) for the landing page or [http://localhost:3000/dashboard](http://localhost:3000/dashboard) for the demo workspace. The demo UI runs against typed seed data in memory so the product walkthrough works without a database.
 
 Useful checks:
 
@@ -33,6 +33,247 @@ pnpm test
 pnpm lint
 pnpm build
 pnpm prisma:validate
+```
+
+## Metal Quote-to-Order Backend
+
+This repo now includes a separate FastAPI backend for custom metal part quote-to-order intake. It is intentionally **not** a marketplace, supplier-matching engine, automated supplier router, ML pricing system, or guaranteed instant quote product.
+
+The workflow is:
+
+1. Upload a metal part file and get a budgetary estimate.
+2. Submit the estimate as an RFQ/order-intent record.
+3. Admin reviews manufacturability.
+4. Admin creates a final quote.
+5. Customer approves the final quote.
+6. Customer pays a deposit or full amount through a mock payment session.
+7. Order moves into paid/order-ready state.
+
+Core product rule: instant estimates are lead/order-intent tools only. Final quote, payment, and order creation require human/admin review first.
+
+### Backend Setup
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn backend.main:app --reload --port 8000
+```
+
+The backend defaults to SQLite at `metal_quote.db` and local uploads under `uploads/`.
+
+Run backend tests:
+
+```bash
+.venv/bin/pytest -q
+```
+
+### API Overview
+
+- `POST /quote/metal`: upload file and create budgetary estimate.
+- `POST /rfq/submit`: convert budgetary estimate to RFQ/order intent.
+- `PATCH /admin/rfq/{rfq_id}/review`: admin manufacturability review.
+- `POST /admin/rfq/{rfq_id}/final-quote`: create final quote after review.
+- `GET /quote/final/{final_quote_id}`: customer-safe final quote.
+- `POST /quote/final/{final_quote_id}/approve`: customer approves final quote and creates order.
+- `POST /quote/final/{final_quote_id}/reject`: customer rejects final quote.
+- `POST /orders/{order_id}/payment-session`: create mock payment session.
+- `POST /payments/mock-confirm`: confirm mock payment as paid or failed.
+- `GET /orders/{order_id}`: retrieve order record.
+- `POST /access/request`: capture a pilot/demo access request with server-side audit.
+
+### Example Workflow
+
+Create a small DXF file:
+
+```bash
+cat > /tmp/sample-part.dxf <<'DXF'
+0
+SECTION
+2
+ENTITIES
+0
+LINE
+8
+0
+10
+0
+20
+0
+11
+100
+21
+50
+0
+ENDSEC
+0
+EOF
+DXF
+```
+
+Create a budgetary estimate:
+
+```bash
+curl -s http://localhost:8000/quote/metal \
+  -F "file=@/tmp/sample-part.dxf" \
+  -F "process_type=laser_cutting" \
+  -F "material=aluminum_6061" \
+  -F "thickness_mm=3" \
+  -F "quantity=5" \
+  -F "finish=deburred" \
+  -F "tolerance=standard" \
+  -F "shipping_zip=78701" \
+  -F "notes=standard bracket"
+```
+
+Response shape:
+
+```json
+{
+  "quote_id": "quote_abc123",
+  "quote_type": "budgetary_estimate",
+  "estimated_price_range": { "low": 120.0, "high": 180.0 },
+  "review_required": false,
+  "next_step": "Submit RFQ for manufacturability review and final quote.",
+  "disclaimer": "This is a budgetary estimate only. Final price, lead time, and manufacturability must be confirmed before production."
+}
+```
+
+Submit RFQ:
+
+```bash
+curl -s http://localhost:8000/rfq/submit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "quote_id": "quote_abc123",
+    "customer_name": "Ada Mason",
+    "email": "ada@example.com",
+    "phone": "555-0100",
+    "company": "Apex Metal Buyers",
+    "notes": "Please review for production.",
+    "consent_to_review": true
+  }'
+```
+
+Response shape:
+
+```json
+{
+  "rfq_id": "rfq_abc123",
+  "quote_id": "quote_abc123",
+  "status": "needs_review",
+  "next_step": "Admin manufacturability review is required before final quote."
+}
+```
+
+Admin review:
+
+```bash
+curl -s -X PATCH http://localhost:8000/admin/rfq/rfq_abc123/review \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "ready_for_final_quote",
+    "internal_notes": "Flat part looks manufacturable.",
+    "reviewed_by": "admin@example.com",
+    "manufacturability_notes": "Use 3 mm 6061 sheet, deburr edges.",
+    "recommended_process": "laser_cutting",
+    "required_changes": null,
+    "review_required": false
+  }'
+```
+
+Create final quote:
+
+```bash
+curl -s http://localhost:8000/admin/rfq/rfq_abc123/final-quote \
+  -H "Content-Type: application/json" \
+  -d '{
+    "final_price": 875,
+    "final_lead_time_days": 9,
+    "final_process_type": "laser_cutting",
+    "final_material": "aluminum_6061",
+    "final_finish": "deburred",
+    "quote_expiration_date": "2027-02-01",
+    "production_notes": "Final quote after human manufacturability review.",
+    "payment_required_type": "deposit",
+    "deposit_amount": 250
+  }'
+```
+
+Response shape:
+
+```json
+{
+  "final_quote_id": "final_quote_abc123",
+  "rfq_id": "rfq_abc123",
+  "status": "pending_customer_approval",
+  "final_price": 875,
+  "payment_required_type": "deposit",
+  "deposit_amount": 250
+}
+```
+
+Customer approval:
+
+```bash
+curl -s -X POST http://localhost:8000/quote/final/final_quote_abc123/approve
+```
+
+Response shape:
+
+```json
+{
+  "final_quote_id": "final_quote_abc123",
+  "rfq_id": "rfq_abc123",
+  "order_id": "order_abc123",
+  "status": "approved",
+  "payment_required": true
+}
+```
+
+Create mock payment session:
+
+```bash
+curl -s -X POST http://localhost:8000/orders/order_abc123/payment-session
+```
+
+Response shape:
+
+```json
+{
+  "payment_session_id": "pay_abc123",
+  "payment_url": "/payments/mock/pay_abc123?amount=250.00&type=deposit",
+  "amount_due": 250,
+  "payment_type": "deposit",
+  "status": "pending"
+}
+```
+
+Confirm mock payment:
+
+```bash
+curl -s http://localhost:8000/payments/mock-confirm \
+  -H "Content-Type: application/json" \
+  -d '{ "payment_session_id": "pay_abc123", "payment_status": "paid" }'
+```
+
+Response shape:
+
+```json
+{
+  "payment_session_id": "pay_abc123",
+  "order_id": "order_abc123",
+  "payment_status": "paid",
+  "order_status": "paid",
+  "rfq_status": "paid",
+  "amount_paid": 250,
+  "balance_due": 625
+}
+```
+
+Retrieve paid order:
+
+```bash
+curl -s http://localhost:8000/orders/order_abc123
 ```
 
 ## Database Setup
@@ -47,6 +288,53 @@ pnpm db:seed
 ```
 
 `DATABASE_URL` should point at a PostgreSQL database. `pnpm db:dev` starts Prisma's local Postgres helper on supported systems and prints a connection URL you can place in `.env`.
+
+## Cognito Login
+
+The landing page includes a Cognito Hosted UI sign-in CTA. Configure these public environment variables before using it outside demo mode:
+
+- `NEXT_PUBLIC_COGNITO_DOMAIN`
+- `NEXT_PUBLIC_COGNITO_CLIENT_ID`
+- `NEXT_PUBLIC_COGNITO_REDIRECT_URI`
+- `NEXT_PUBLIC_COGNITO_SCOPE`
+- `NEXT_PUBLIC_COGNITO_RESPONSE_TYPE`
+
+If the Cognito domain or client id is missing, the CTA routes to `/dashboard?auth=demo` and labels the experience as demo mode.
+
+## Request Access Capture
+
+The public `/request-access` page posts to the FastAPI backend when `NEXT_PUBLIC_API_BASE_URL` is configured. Local development defaults to `http://localhost:8000`; production deployments should set this to the deployed backend URL.
+
+```bash
+curl -s http://localhost:8000/access/request \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Ada Mason",
+    "email": "ada@example.com",
+    "company": "Apex Metal Buyers",
+    "role": "Procurement lead",
+    "use_case": "Pilot controlled RFQ intake and final quote review for custom metal parts.",
+    "estimated_monthly_rfqs": 25,
+    "notes": "Need a reviewed pilot before uploading production data.",
+    "consent_to_contact": true
+  }'
+```
+
+Response shape:
+
+```json
+{
+  "request_id": "access_abc123",
+  "status": "new",
+  "company": "Apex Metal Buyers",
+  "email": "ada@example.com",
+  "next_step": "We will review the request and confirm the right demo or pilot path before enabling production data access."
+}
+```
+
+## Low-Cost Paid Conversion Plan
+
+See `docs/aws-low-cost-paid-conversion.md` for the sub-$10/month minimal-use AWS architecture. The short version: use Cognito, Lambda Function URLs, DynamoDB on-demand, S3 signed URLs, and short-retention CloudWatch logs. Avoid ECS/Fargate, ALB/NLB, NAT gateways, RDS/Aurora, and other always-on resources until revenue or traffic justifies them.
 
 ## Demo Flow
 
@@ -80,6 +368,8 @@ Static buyer-facing artifacts deploy under `public/artifacts/`:
 - `src/lib/access-control.ts`: scoped data-room access decisions and audit metadata.
 - `src/lib/registry-adapters.ts`: adapter interfaces and manual-review placeholders.
 - `src/components/sovereign-source-app.tsx`: demo-ready buyer, reviewer, and supplier workflows.
+- `src/app/trust/page.tsx`: public trust/security boundary with only verified claims.
+- `src/app/request-access/page.tsx`: public access request intake.
 - `prisma/schema.prisma`: PostgreSQL persistence model.
 
 ## Compliance Language
